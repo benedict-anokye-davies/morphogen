@@ -1,0 +1,20 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Node / client
+node_modules/
+dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Simulation data
+data/snapshots/
+data/logs/
+
+# OS
+.DS_Store
+Thumbs.db
