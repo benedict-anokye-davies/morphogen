@@ -1,28 +1,33 @@
-const canvas = document.getElementById("morphogen-canvas") as HTMLCanvasElement;
-const ctx = canvas.getContext("2d");
+﻿import { Simulation } from './simulation';
+import { Camera } from './camera';
+import { Renderer } from './renderer';
 
-if (!ctx) {
-  throw new Error("Failed to acquire 2D rendering context.");
-}
+const WORLD_W = 300;
+const WORLD_H = 300;
+const CELL_SIZE = 4;
+const SEED = 12345;
+
+const canvas = document.getElementById('morphogen-canvas') as HTMLCanvasElement;
+if (!canvas) throw new Error('Canvas element not found');
 
 function resize(): void {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 }
-
-function render(): void {
-  if (!ctx) return;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#0a0a0a";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  // Simulation frames will be drawn here
-}
-
-function loop(): void {
-  render();
-  requestAnimationFrame(loop);
-}
-
-window.addEventListener("resize", resize);
+window.addEventListener('resize', resize);
 resize();
-loop();
+
+const simulation = new Simulation(WORLD_W, WORLD_H, SEED);
+const camera = new Camera(canvas);
+const renderer = new Renderer(canvas, simulation, camera, CELL_SIZE);
+
+setInterval(() => {
+  simulation.tick();
+  renderer.recordStats();
+}, 100);
+
+function frame(): void {
+  renderer.render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
