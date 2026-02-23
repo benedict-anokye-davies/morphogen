@@ -1,265 +1,197 @@
-﻿import { Entity, WorldStats, TerrainCell } from './types';
+import { Entity, WorldStats, TerrainCell } from './types';
 import { generateTerrain, isLand } from './terrain';
 
 class SeededRNG {
   private state: number;
-
-  constructor(seed: number) {
-    this.state = seed | 0;
-    if (this.state === 0) this.state = 1;
-  }
-
-  next(): number {
-    this.state ^= this.state << 13;
-    this.state ^= this.state >> 17;
-    this.state ^= this.state << 5;
-    return ((this.state >>> 0) / 0xffffffff);
-  }
-
-  range(min: number, max: number): number {
-    return min + this.next() * (max - min);
-  }
+  constructor(seed: number) { this.state = seed | 0; if (this.state === 0) this.state = 1; }
+  next(): number { this.state ^= this.state << 13; this.state ^= this.state >> 17; this.state ^= this.state << 5; return ((this.state >>> 0) / 0xffffffff); }
+  range(min: number, max: number): number { return min + this.next() * (max - min); }
 }
 
-const MAX_PLANTS = 600;
-const MAX_HERBIVORES = 200;
-const MAX_CARNIVORES = 60;
+const MAX_PLANTS = 600, MAX_HERBIVORES = 200, MAX_CARNIVORES = 60;
+const KIND_SPECIES_ID: Record<string, number> = { plant: 1, herbivore: 2, carnivore: 3 };
 
 export class Simulation {
-  entities: Entity[] = [];
-  terrain: TerrainCell[][];
-  tickCount = 0;
-  readonly width: number;
-  readonly height: number;
-  private rng: SeededRNG;
-  private nextId = 0;
+  entities: Entity[] = []; terrain: TerrainCell[][]; tickCount = 0;
+  readonly width: number; readonly height: number;
+  private rng: SeededRNG; private nextId = 0;
+  walls: Set<string> = new Set(); scorchedCells: Set<string> = new Set(); rainBoostMap: Map<string, number> = new Map();
+  plantReproductionMultiplier = 1.0;
 
   constructor(width: number, height: number, seed: number) {
-    this.width = width;
-    this.height = height;
-    this.rng = new SeededRNG(seed);
-    this.terrain = generateTerrain(width, height, seed);
-    this.populate();
+    this.width = width; this.height = height; this.rng = new SeededRNG(seed);
+    this.terrain = generateTerrain(width, height, seed); this.populate();
   }
-
-  private allocId(): number {
-    return this.nextId++;
-  }
-
+  private allocId(): number { return this.nextId++; }
   private findLandPosition(): { x: number; y: number } {
     for (let attempts = 0; attempts < 500; attempts++) {
-      const x = this.rng.range(0, this.width);
-      const y = this.rng.range(0, this.height);
-      const gx = Math.floor(x);
-      const gy = Math.floor(y);
-      if (gx >= 0 && gx < this.width && gy >= 0 && gy < this.height && isLand(this.terrain[gy][gx])) {
-        return { x, y };
-      }
+      const x = this.rng.range(0, this.width), y = this.rng.range(0, this.height);
+      const gx = Math.floor(x), gy = Math.floor(y);
+      if (gx >= 0 && gx < this.width && gy >= 0 && gy < this.height && isLand(this.terrain[gy][gx])) return { x, y };
     }
     return { x: this.width / 2, y: this.height / 2 };
   }
-
+  private clamp(v: number, min: number, max: number): number { return v < min ? min : v > max ? max : v; }
   private createEntity(kind: Entity['kind']): Entity {
     const pos = this.findLandPosition();
     const base: Record<Entity['kind'], { energy: number; speed: number; size: number }> = {
-      plant: { energy: 10, speed: 0, size: 3 },
-      herbivore: { energy: 20, speed: 2.0, size: 4 },
-      carnivore: { energy: 20, speed: 2.0, size: 5 },
+      plant: { energy: 10, speed: 0, size: 3 }, herbivore: { energy: 20, speed: 2.0, size: 4 }, carnivore: { energy: 20, speed: 2.0, size: 5 },
     };
     const cfg = base[kind];
-    return {
-      id: this.allocId(),
-      x: pos.x,
-      y: pos.y,
-      energy: cfg.energy + this.rng.range(-2, 2),
-      kind,
-      alive: true,
-      size: cfg.size,
-      speed: cfg.speed + this.rng.range(-0.3, 0.3),
-      age: 0,
-      speciesId: Math.floor(this.rng.next() * 1000),
-    };
+    const speed = this.clamp(cfg.speed + this.rng.range(-0.3, 0.3), 0.5, 3);
+    const size = this.clamp(cfg.size + this.rng.range(-0.2, 0.2), 2, 6);
+    const genome = [
+      this.clamp((speed - 0.5) / 2.5 + this.rng.range(-0.08, 0.08), 0, 1),
+      this.clamp((size - 2) / 4 + this.rng.range(-0.08, 0.08), 0, 1),
+      this.clamp(this.rng.range(0.25, 0.75), 0, 1),
+      this.clamp(this.rng.range(0.25, 0.75), 0, 1),
+    ];
+    return { id: this.allocId(), x: pos.x, y: pos.y, energy: cfg.energy + this.rng.range(-2, 2), kind, alive: true, size, speed, age: 0, speciesId: KIND_SPECIES_ID[kind] ?? 1, genome };
   }
-
+  private createEntityAt(kind: Entity['kind'], x: number, y: number): Entity {
+    const base: Record<Entity['kind'], { energy: number; speed: number; size: number }> = {
+      plant: { energy: 10, speed: 0, size: 3 }, herbivore: { energy: 20, speed: 2.0, size: 4 }, carnivore: { energy: 20, speed: 2.0, size: 5 },
+    };
+    const cfg = base[kind];
+    const speed = this.clamp(cfg.speed + this.rng.range(-0.3, 0.3), 0.5, 3);
+    const size = this.clamp(cfg.size + this.rng.range(-0.2, 0.2), 2, 6);
+    const genome = [
+      this.clamp((speed - 0.5) / 2.5 + this.rng.range(-0.08, 0.08), 0, 1),
+      this.clamp((size - 2) / 4 + this.rng.range(-0.08, 0.08), 0, 1),
+      this.clamp(this.rng.range(0.25, 0.75), 0, 1),
+      this.clamp(this.rng.range(0.25, 0.75), 0, 1),
+    ];
+    return { id: this.allocId(), x, y, energy: cfg.energy + this.rng.range(-2, 2), kind, alive: true, size, speed, age: 0, speciesId: KIND_SPECIES_ID[kind] ?? 1, genome };
+  }
+  addEntity(kind: Entity['kind'], x: number, y: number): void { this.entities.push(this.createEntityAt(kind, x, y)); }
   private populate(): void {
     for (let i = 0; i < 400; i++) this.entities.push(this.createEntity('plant'));
     for (let i = 0; i < 80; i++) this.entities.push(this.createEntity('herbivore'));
     for (let i = 0; i < 30; i++) this.entities.push(this.createEntity('carnivore'));
   }
-
-  private clamp(v: number, min: number, max: number): number {
-    return v < min ? min : v > max ? max : v;
+  private distSq(a: Entity, b: Entity): number { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; }
+  isBlocked(x: number, y: number): boolean {
+    const gx = Math.floor(x), gy = Math.floor(y);
+    if (gx < 0 || gx >= this.width || gy < 0 || gy >= this.height) return true;
+    return this.walls.has(gx + "," + gy);
   }
-
-  private distSq(a: Entity, b: Entity): number {
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    return dx * dx + dy * dy;
-  }
-
   private moveToward(entity: Entity, tx: number, ty: number): void {
-    const dx = tx - entity.x;
-    const dy = ty - entity.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 0.1) return;
-    const step = Math.min(entity.speed, dist);
-    entity.x += (dx / dist) * step;
-    entity.y += (dy / dist) * step;
-    entity.x = this.clamp(entity.x, 0, this.width - 1);
-    entity.y = this.clamp(entity.y, 0, this.height - 1);
+    const dx = tx - entity.x, dy = ty - entity.y, dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 0.1) return; const step = Math.min(entity.speed, dist);
+    const nx = this.clamp(entity.x + (dx / dist) * step, 0, this.width - 1);
+    const ny = this.clamp(entity.y + (dy / dist) * step, 0, this.height - 1);
+    if (this.isBlocked(nx, ny)) {
+      if (!this.isBlocked(nx, entity.y)) { entity.x = nx; return; }
+      if (!this.isBlocked(entity.x, ny)) { entity.y = ny; return; }
+      return;
+    }
+    entity.x = nx; entity.y = ny;
   }
-
   private wander(entity: Entity): void {
     const angle = this.rng.next() * Math.PI * 2;
-    const tx = entity.x + Math.cos(angle) * entity.speed * 2;
-    const ty = entity.y + Math.sin(angle) * entity.speed * 2;
-    this.moveToward(entity, tx, ty);
+    this.moveToward(entity, entity.x + Math.cos(angle) * entity.speed * 2, entity.y + Math.sin(angle) * entity.speed * 2);
   }
-
   private findNearest(entity: Entity, kind: Entity['kind'], range: number): Entity | null {
-    let best: Entity | null = null;
-    let bestDist = range * range;
+    let best: Entity | null = null, bestDist = range * range;
     for (let i = 0; i < this.entities.length; i++) {
       const other = this.entities[i];
       if (!other.alive || other.kind !== kind || other.id === entity.id) continue;
-      const d = this.distSq(entity, other);
-      if (d < bestDist) {
-        bestDist = d;
-        best = other;
-      }
+      const d = this.distSq(entity, other); if (d < bestDist) { bestDist = d; best = other; }
     }
     return best;
   }
-
-  private countAlive(kind: Entity['kind']): number {
-    let n = 0;
-    for (let i = 0; i < this.entities.length; i++) {
-      if (this.entities[i].alive && this.entities[i].kind === kind) n++;
-    }
-    return n;
-  }
-
+  private countAlive(kind: Entity['kind']): number { let n = 0; for (let i = 0; i < this.entities.length; i++) if (this.entities[i].alive && this.entities[i].kind === kind) n++; return n; }
   private spawnOffspring(parent: Entity): void {
-    const caps: Record<Entity['kind'], number> = {
-      plant: MAX_PLANTS,
-      herbivore: MAX_HERBIVORES,
-      carnivore: MAX_CARNIVORES,
-    };
+    const caps: Record<Entity['kind'], number> = { plant: MAX_PLANTS, herbivore: MAX_HERBIVORES, carnivore: MAX_CARNIVORES };
     if (this.countAlive(parent.kind) >= caps[parent.kind]) return;
-
-    const offsetX = this.rng.range(-4, 4);
-    const offsetY = this.rng.range(-4, 4);
-    const child: Entity = {
-      id: this.allocId(),
-      x: this.clamp(parent.x + offsetX, 0, this.width - 1),
-      y: this.clamp(parent.y + offsetY, 0, this.height - 1),
-      energy: parent.energy * 0.35,
-      kind: parent.kind,
-      alive: true,
-      size: parent.size + this.rng.range(-0.2, 0.2),
-      speed: parent.speed + this.rng.range(-0.1, 0.1),
-      age: 0,
-      speciesId: parent.speciesId,
-    };
-    child.speed = this.clamp(child.speed, 0.5, 3);
-    child.size = this.clamp(child.size, 2, 6);
-    parent.energy *= 0.55;
-    this.entities.push(child);
+    const genome = parent.genome.map(g => this.clamp(g + this.rng.range(-0.05, 0.05), 0, 1));
+    const speed = this.clamp(0.5 + genome[0] * 2.5 + this.rng.range(-0.05, 0.05), 0.5, 3);
+    const size = this.clamp(2 + genome[1] * 4 + this.rng.range(-0.05, 0.05), 2, 6);
+    const cx = this.clamp(parent.x + this.rng.range(-4, 4), 0, this.width - 1); const cy = this.clamp(parent.y + this.rng.range(-4, 4), 0, this.height - 1); if (this.isBlocked(cx, cy)) return;
+    const child: Entity = { id: this.allocId(), x: cx, y: cy, energy: parent.energy * 0.35, kind: parent.kind, alive: true, size, speed, age: 0, speciesId: parent.speciesId, genome };
+    parent.energy *= 0.55; this.entities.push(child);
   }
-
+  feedArea(x: number, y: number, radius: number): void {
+    const r2 = radius * radius;
+    for (let i = 0; i < this.entities.length; i++) {
+      const e = this.entities[i]; if (!e.alive) continue;
+      const dx = e.x - x, dy = e.y - y; if (dx * dx + dy * dy <= r2) e.energy += 20;
+    }
+  }
+  poisonArea(x: number, y: number, radius: number): void {
+    const r2 = radius * radius;
+    for (let i = 0; i < this.entities.length; i++) {
+      const e = this.entities[i]; if (!e.alive) continue;
+      const dx = e.x - x, dy = e.y - y; if (dx * dx + dy * dy <= r2) e.alive = false;
+    }
+  }
+  rainBoost(x: number, y: number, radius: number): void {
+    const cr = Math.ceil(radius), r2 = radius * radius;
+    for (let dy = -cr; dy <= cr; dy++) for (let dx = -cr; dx <= cr; dx++) if (dx * dx + dy * dy <= r2) {
+      const cx = Math.floor(x) + dx, cy = Math.floor(y) + dy;
+      if (cx >= 0 && cx < this.width && cy >= 0 && cy < this.height) this.rainBoostMap.set(cx + ',' + cy, 300);
+    }
+  }
+  getPopulationBySpecies(): Map<number, number> {
+    const counts = new Map<number, number>();
+    for (const e of this.entities) { if (!e.alive) continue; counts.set(e.speciesId, (counts.get(e.speciesId) ?? 0) + 1); }
+    return counts;
+  }
+  killBySpecies(speciesId: number, rate: number): void {
+    for (const e of this.entities) { if (e.alive && e.speciesId === speciesId && this.rng.next() < rate) e.alive = false; }
+  }
+  getTerrainHeight(x: number, y: number): number {
+    const gx = Math.floor(x), gy = Math.floor(y);
+    if (gx >= 0 && gx < this.width && gy >= 0 && gy < this.height) return this.terrain[gy][gx].height;
+    return 0;
+  }
   private tickPlant(e: Entity): void {
-    e.energy += 0.5;
-    if (e.energy > 20 && this.rng.next() < 0.08) {
-      this.spawnOffspring(e);
-    }
-    if (e.energy <= 0 || e.age > 500) e.alive = false;
+    e.energy += 0.5; if (e.energy > 20 && this.rng.next() < 0.08 * this.plantReproductionMultiplier) this.spawnOffspring(e); if (e.energy <= 0 || e.age > 500) e.alive = false;
   }
-
   private tickHerbivore(e: Entity): void {
-    e.energy -= 0.15;
-    const target = this.findNearest(e, 'plant', 35);
-    if (target) {
-      this.moveToward(e, target.x, target.y);
-      if (this.distSq(e, target) < 4) {
-        e.energy += 8;
-        target.alive = false;
-      }
-    } else {
-      this.wander(e);
-    }
-    if (e.energy > 22 && this.rng.next() < 0.08) {
-      this.spawnOffspring(e);
-    }
-    if (e.energy <= 0 || e.age > 400) e.alive = false;
+    e.energy -= 0.15; const target = this.findNearest(e, 'plant', 35);
+    if (target) { this.moveToward(e, target.x, target.y); if (this.distSq(e, target) < 4) { e.energy += 8; target.alive = false; } }
+    else this.wander(e);
+    if (e.energy > 22 && this.rng.next() < 0.08) this.spawnOffspring(e); if (e.energy <= 0 || e.age > 400) e.alive = false;
   }
-
   private tickCarnivore(e: Entity): void {
-    e.energy -= 0.4;
-    const target = this.findNearest(e, 'herbivore', 40);
-    if (target) {
-      this.moveToward(e, target.x, target.y);
-      if (this.distSq(e, target) < 6) {
-        e.energy += 15;
-        target.alive = false;
-      }
-    } else {
-      this.wander(e);
-    }
-    if (e.energy > 30 && this.rng.next() < 0.04) {
-      this.spawnOffspring(e);
-    }
-    if (e.energy <= 0 || e.age > 200) e.alive = false;
+    e.energy -= 0.4; const target = this.findNearest(e, 'herbivore', 40);
+    if (target) { this.moveToward(e, target.x, target.y); if (this.distSq(e, target) < 6) { e.energy += 15; target.alive = false; } }
+    else this.wander(e);
+    if (e.energy > 30 && this.rng.next() < 0.04) this.spawnOffspring(e); if (e.energy <= 0 || e.age > 200) e.alive = false;
   }
-
   tick(): void {
-    this.tickCount++;
-
+    this.tickCount++; this.plantReproductionMultiplier = 1.0;
+    for (const [key, ttl] of this.rainBoostMap) { if (ttl <= 0) this.rainBoostMap.delete(key); else this.rainBoostMap.set(key, ttl - 1); }
     for (let i = 0; i < this.entities.length; i++) {
-      const e = this.entities[i];
-      if (!e.alive) continue;
-      e.age++;
-
-      switch (e.kind) {
-        case 'plant': this.tickPlant(e); break;
-        case 'herbivore': this.tickHerbivore(e); break;
-        case 'carnivore': this.tickCarnivore(e); break;
-      }
+      const e = this.entities[i]; if (!e.alive) continue; e.age++;
+      if (this.rainBoostMap.has(Math.floor(e.x) + ',' + Math.floor(e.y))) { if (e.kind === 'plant') e.energy += 0.3; }
+      switch (e.kind) { case 'plant': this.tickPlant(e); break; case 'herbivore': this.tickHerbivore(e); break; case 'carnivore': this.tickCarnivore(e); break; }
     }
-
     this.entities = this.entities.filter(e => e.alive);
-
-    const plants = this.countAlive('plant');
-    const herbivores = this.countAlive('herbivore');
-    const carnivores = this.countAlive('carnivore');
-
-    if (plants < 100) {
-      for (let i = 0; i < 30; i++) this.entities.push(this.createEntity('plant'));
-    }
-    if (herbivores < 8 && plants > 80) {
-      for (let i = 0; i < 8; i++) this.entities.push(this.createEntity('herbivore'));
-    }
-    if (carnivores < 3 && herbivores > 25) {
-      for (let i = 0; i < 4; i++) this.entities.push(this.createEntity('carnivore'));
-    }
+    const plants = this.countAlive('plant'), herbivores = this.countAlive('herbivore'), carnivores = this.countAlive('carnivore');
+    if (plants < 100) for (let i = 0; i < 30; i++) this.entities.push(this.createEntity('plant'));
+    if (herbivores < 8 && plants > 80) for (let i = 0; i < 8; i++) this.entities.push(this.createEntity('herbivore'));
+    if (carnivores < 3 && herbivores > 25) for (let i = 0; i < 4; i++) this.entities.push(this.createEntity('carnivore'));
   }
-
   getStats(): WorldStats {
-    let plantCount = 0;
-    let herbivoreCount = 0;
-    let carnivoreCount = 0;
-    let totalEnergy = 0;
-
-    for (let i = 0; i < this.entities.length; i++) {
-      const e = this.entities[i];
-      if (!e.alive) continue;
-      totalEnergy += e.energy;
-      switch (e.kind) {
-        case 'plant': plantCount++; break;
-        case 'herbivore': herbivoreCount++; break;
-        case 'carnivore': carnivoreCount++; break;
-      }
-    }
-
+    let plantCount = 0, herbivoreCount = 0, carnivoreCount = 0, totalEnergy = 0;
+    for (let i = 0; i < this.entities.length; i++) { const e = this.entities[i]; if (!e.alive) continue; totalEnergy += e.energy; switch (e.kind) { case 'plant': plantCount++; break; case 'herbivore': herbivoreCount++; break; case 'carnivore': carnivoreCount++; break; } }
     return { plantCount, herbivoreCount, carnivoreCount, totalEnergy, tick: this.tickCount };
+  }
+  paintWalls(x: number, y: number, radius: number, add: boolean): void {
+    const cr = Math.ceil(radius), r2 = radius * radius;
+    for (let dy = -cr; dy <= cr; dy++) for (let dx = -cr; dx <= cr; dx++) if (dx * dx + dy * dy <= r2) { const cx = Math.floor(x) + dx, cy = Math.floor(y) + dy; if (cx >= 0 && cx < this.width && cy >= 0 && cy < this.height) { const key = cx + ',' + cy; if (add) this.walls.add(key); else this.walls.delete(key); } }
+  }
+  meteorStrike(x: number, y: number): void {
+    const radius = 60, r2 = radius * radius;
+    for (let i = 0; i < this.entities.length; i++) { const e = this.entities[i]; if (!e.alive) continue; const dx = e.x - x, dy = e.y - y; if (dx * dx + dy * dy <= r2) e.alive = false; }
+    const cr = Math.ceil(radius);
+    for (let dy = -cr; dy <= cr; dy++) for (let dx = -cr; dx <= cr; dx++) if (dx * dx + dy * dy <= r2) { const cx = Math.floor(x) + dx, cy = Math.floor(y) + dy; if (cx >= 0 && cx < this.width && cy >= 0 && cy < this.height) this.scorchedCells.add(cx + ',' + cy); }
+  }
+  removeNearestEntity(x: number, y: number, range: number): void {
+    let best: Entity | null = null, bestDist = range * range;
+    for (let i = 0; i < this.entities.length; i++) { const e = this.entities[i]; if (!e.alive) continue; const dx = e.x - x, dy = e.y - y, d = dx * dx + dy * dy; if (d < bestDist) { bestDist = d; best = e; } }
+    if (best) best.alive = false;
   }
 }

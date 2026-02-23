@@ -9,6 +9,7 @@ export interface Entity {
   speed: number;
   age: number;
   speciesId: number;
+  genome: number[];
 }
 
 export interface WorldStats {
