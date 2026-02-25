@@ -137,10 +137,10 @@ export class SpeciesTracker {
 
       const outliers: Entity[] = [];
       for (const e of members) {
-        if (genomeDistance(e.genome, avg) > 0.4) outliers.push(e);
+        if (genomeDistance(e.genome, avg) > 0.15) outliers.push(e);
       }
 
-      if (outliers.length > 0 && outliers.length < members.length) {
+      if (outliers.length >= 2 && outliers.length < members.length) {
         speciations.push({ parentId: spId, outliers, kind: sp.kind });
       }
     }

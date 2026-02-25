@@ -10,6 +10,10 @@ export interface Entity {
   age: number;
   speciesId: number;
   genome: number[];
+  prevX?: number;
+  prevY?: number;
+  trail?: { x: number; y: number }[];
+  hunting?: boolean;
 }
 
 export interface WorldStats {

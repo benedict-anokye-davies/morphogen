@@ -8,7 +8,7 @@ class SeededRNG {
   range(min: number, max: number): number { return min + this.next() * (max - min); }
 }
 
-const MAX_PLANTS = 600, MAX_HERBIVORES = 200, MAX_CARNIVORES = 60;
+const MAX_PLANTS = 800, MAX_HERBIVORES = 400, MAX_CARNIVORES = 120;
 const KIND_SPECIES_ID: Record<string, number> = { plant: 1, herbivore: 2, carnivore: 3 };
 
 export class Simulation {
@@ -45,6 +45,10 @@ export class Simulation {
       this.clamp((size - 2) / 4 + this.rng.range(-0.08, 0.08), 0, 1),
       this.clamp(this.rng.range(0.25, 0.75), 0, 1),
       this.clamp(this.rng.range(0.25, 0.75), 0, 1),
+      this.clamp(this.rng.range(0.2, 0.8), 0, 1),
+      this.clamp(this.rng.range(0.2, 0.8), 0, 1),
+      this.clamp(this.rng.range(0.2, 0.8), 0, 1),
+      this.clamp(this.rng.range(0.2, 0.8), 0, 1),
     ];
     return { id: this.allocId(), x: pos.x, y: pos.y, energy: cfg.energy + this.rng.range(-2, 2), kind, alive: true, size, speed, age: 0, speciesId: KIND_SPECIES_ID[kind] ?? 1, genome };
   }
@@ -60,6 +64,10 @@ export class Simulation {
       this.clamp((size - 2) / 4 + this.rng.range(-0.08, 0.08), 0, 1),
       this.clamp(this.rng.range(0.25, 0.75), 0, 1),
       this.clamp(this.rng.range(0.25, 0.75), 0, 1),
+      this.clamp(this.rng.range(0.2, 0.8), 0, 1),
+      this.clamp(this.rng.range(0.2, 0.8), 0, 1),
+      this.clamp(this.rng.range(0.2, 0.8), 0, 1),
+      this.clamp(this.rng.range(0.2, 0.8), 0, 1),
     ];
     return { id: this.allocId(), x, y, energy: cfg.energy + this.rng.range(-2, 2), kind, alive: true, size, speed, age: 0, speciesId: KIND_SPECIES_ID[kind] ?? 1, genome };
   }
@@ -104,7 +112,7 @@ export class Simulation {
   private spawnOffspring(parent: Entity): void {
     const caps: Record<Entity['kind'], number> = { plant: MAX_PLANTS, herbivore: MAX_HERBIVORES, carnivore: MAX_CARNIVORES };
     if (this.countAlive(parent.kind) >= caps[parent.kind]) return;
-    const genome = parent.genome.map(g => this.clamp(g + this.rng.range(-0.05, 0.05), 0, 1));
+    const genome = parent.genome.map(g => this.clamp(g + this.rng.range(-0.12, 0.12), 0, 1));
     const speed = this.clamp(0.5 + genome[0] * 2.5 + this.rng.range(-0.05, 0.05), 0.5, 3);
     const size = this.clamp(2 + genome[1] * 4 + this.rng.range(-0.05, 0.05), 2, 6);
     const cx = this.clamp(parent.x + this.rng.range(-4, 4), 0, this.width - 1); const cy = this.clamp(parent.y + this.rng.range(-4, 4), 0, this.height - 1); if (this.isBlocked(cx, cy)) return;
@@ -149,16 +157,40 @@ export class Simulation {
     e.energy += 0.5; if (e.energy > 20 && this.rng.next() < 0.08 * this.plantReproductionMultiplier) this.spawnOffspring(e); if (e.energy <= 0 || e.age > 500) e.alive = false;
   }
   private tickHerbivore(e: Entity): void {
-    e.energy -= 0.15; const target = this.findNearest(e, 'plant', 35);
-    if (target) { this.moveToward(e, target.x, target.y); if (this.distSq(e, target) < 4) { e.energy += 8; target.alive = false; } }
-    else this.wander(e);
-    if (e.energy > 22 && this.rng.next() < 0.08) this.spawnOffspring(e); if (e.energy <= 0 || e.age > 400) e.alive = false;
+    e.energy -= 0.08;
+    const target = this.findNearest(e, 'plant', 60);
+    e.prevX = e.x;
+    e.prevY = e.y;
+    if (target) {
+      this.moveToward(e, target.x, target.y);
+      if (this.distSq(e, target) < 4) { e.energy += 12; target.alive = false; }
+    } else {
+      this.wander(e);
+    }
+    if (e.energy > 18 && this.rng.next() < 0.12) this.spawnOffspring(e);
+    if (e.energy <= 0 || e.age > 600) e.alive = false;
   }
   private tickCarnivore(e: Entity): void {
-    e.energy -= 0.4; const target = this.findNearest(e, 'herbivore', 40);
-    if (target) { this.moveToward(e, target.x, target.y); if (this.distSq(e, target) < 6) { e.energy += 15; target.alive = false; } }
-    else this.wander(e);
-    if (e.energy > 30 && this.rng.next() < 0.04) this.spawnOffspring(e); if (e.energy <= 0 || e.age > 200) e.alive = false;
+    e.energy -= 0.2;
+    const target = this.findNearest(e, 'herbivore', 70);
+    e.prevX = e.x;
+    e.prevY = e.y;
+    e.hunting = target !== null;
+    if (target) {
+      this.moveToward(e, target.x, target.y);
+      if (this.distSq(e, target) < 6) { e.energy += 20; target.alive = false; }
+    } else {
+      this.wander(e);
+    }
+    if (!e.trail) {
+      e.trail = [{ x: e.prevX, y: e.prevY }, { x: e.prevX, y: e.prevY }, { x: e.prevX, y: e.prevY }];
+    } else {
+      e.trail[0].x = e.trail[1].x; e.trail[0].y = e.trail[1].y;
+      e.trail[1].x = e.trail[2].x; e.trail[1].y = e.trail[2].y;
+      e.trail[2].x = e.prevX; e.trail[2].y = e.prevY;
+    }
+    if (e.energy > 22 && this.rng.next() < 0.08) this.spawnOffspring(e);
+    if (e.energy <= 0 || e.age > 400) e.alive = false;
   }
   tick(): void {
     this.tickCount++; this.plantReproductionMultiplier = 1.0;
@@ -171,8 +203,8 @@ export class Simulation {
     this.entities = this.entities.filter(e => e.alive);
     const plants = this.countAlive('plant'), herbivores = this.countAlive('herbivore'), carnivores = this.countAlive('carnivore');
     if (plants < 100) for (let i = 0; i < 30; i++) this.entities.push(this.createEntity('plant'));
-    if (herbivores < 8 && plants > 80) for (let i = 0; i < 8; i++) this.entities.push(this.createEntity('herbivore'));
-    if (carnivores < 3 && herbivores > 25) for (let i = 0; i < 4; i++) this.entities.push(this.createEntity('carnivore'));
+    if (herbivores < 20 && plants > 50) for (let i = 0; i < 15; i++) this.entities.push(this.createEntity('herbivore'));
+    if (carnivores < 8 && herbivores > 15) for (let i = 0; i < 8; i++) this.entities.push(this.createEntity('carnivore'));
   }
   getStats(): WorldStats {
     let plantCount = 0, herbivoreCount = 0, carnivoreCount = 0, totalEnergy = 0;

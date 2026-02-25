@@ -1,6 +1,6 @@
 import { Simulation } from './simulation';
 import { Camera } from './camera';
-import { WorldStats } from './types';
+import { Entity, WorldStats } from './types';
 import { Species } from './species';
 import { Encyclopedia } from './encyclopedia';
 import { PhyloTree } from './phylotree';
@@ -226,32 +226,155 @@ export class Renderer {
     const entities = this.simulation.entities;
     const cw = this.canvas.width;
     const ch = this.canvas.height;
-    const zoomScale = Math.min(this.camera.zoom, 3);
+    const zs = Math.min(this.camera.zoom, 3);
+    const ctx = this.ctx;
+
+    for (let i = 0; i < entities.length; i++) {
+      const e = entities[i];
+      if (!e.alive || e.kind !== 'carnivore' || !e.trail) continue;
+      const scr = this.camera.worldToScreen(e.x * cs, e.y * cs);
+      if (scr.x < -80 || scr.x > cw + 80 || scr.y < -80 || scr.y > ch + 80) continue;
+      const baseR = Math.max(1.5, (2.5 + (e.genome[1] ?? 0.5) * 2.5) * zs * 0.55);
+      for (let t = 0; t < e.trail.length; t++) {
+        const tp = e.trail[t];
+        const ts = this.camera.worldToScreen(tp.x * cs, tp.y * cs);
+        ctx.beginPath();
+        ctx.arc(ts.x, ts.y, baseR * (0.55 + t * 0.2), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(239,68,68,${((t + 1) * 0.10).toFixed(2)})`;
+        ctx.fill();
+      }
+    }
 
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
       if (!e.alive) continue;
-
-      const screen = this.camera.worldToScreen(e.x * cs, e.y * cs);
-
-      if (screen.x < -20 || screen.x > cw + 20 ||
-          screen.y < -20 || screen.y > ch + 20) continue;
-
-      const radius = Math.max(2, Math.min(8, (e.energy / 10) * 2)) * zoomScale;
-
-      let color: string;
-      if (this.speciesTintEnabled) {
-        const sp = this.speciesData.get(e.speciesId);
-        color = sp?.color ?? COLORS[e.kind];
-      } else {
-        color = COLORS[e.kind];
+      const scr = this.camera.worldToScreen(e.x * cs, e.y * cs);
+      const sx = scr.x;
+      const sy = scr.y;
+      if (sx < -20 || sx > cw + 20 || sy < -20 || sy > ch + 20) continue;
+      switch (e.kind) {
+        case 'plant':     this.drawPlant(e, sx, sy, zs);     break;
+        case 'herbivore': this.drawHerbivore(e, sx, sy, zs); break;
+        case 'carnivore': this.drawCarnivore(e, sx, sy, zs); break;
       }
-
-      this.ctx.beginPath();
-      this.ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2);
-      this.ctx.fillStyle = color;
-      this.ctx.fill();
     }
+
+    ctx.shadowBlur = 0;
+  }
+
+  private plantColor(g: number[], energy: number, age: number): string {
+    const g2 = g[2] ?? 0.5;
+    let h: number, s: number, l: number;
+    if (g2 < 0.5) {
+      const t = g2 * 2;
+      h = 120 - t * 40; s = 70 - t * 10; l = 25 + t * 20;
+    } else if (g2 < 0.8) {
+      const t = (g2 - 0.5) / 0.3;
+      h = 80 - t * 35; s = 60 + t * 15; l = 45 + t * 5;
+    } else {
+      const t = (g2 - 0.8) * 5;
+      h = (45 + t * 235) % 360; s = 75 - t * 15; l = 50 - t * 5;
+    }
+    const grey = energy < 2 ? (2 - energy) * 0.5 : 0;
+    const flash = age < 10 ? (10 - age) * 2 : 0;
+    s = s * (1 - grey);
+    l = Math.min(88, l * (1 - grey) + 50 * grey + flash);
+    const pulse = 0.82 + Math.sin(age * 0.12) * 0.12;
+    return `hsla(${h | 0},${s | 0}%,${l | 0}%,${pulse.toFixed(2)})`;
+  }
+
+  private herbivoreColor(g: number[], energy: number, age: number): string {
+    const vivid = g[0] * 0.6 + (1 - g[1]) * 0.4;
+    const h = 220 - vivid * 30;
+    let s = 75 + vivid * 20;
+    let l = 18 + vivid * 47;
+    const grey = energy < 2 ? (2 - energy) * 0.5 : 0;
+    const flash = age < 10 ? (10 - age) * 2 : 0;
+    s = s * (1 - grey);
+    l = Math.min(88, l * (1 - grey) + 50 * grey + flash);
+    const alpha = energy < 5 ? 0.35 + (energy / 5) * 0.65 : 1.0;
+    return `hsla(${h | 0},${s | 0}%,${l | 0}%,${alpha.toFixed(2)})`;
+  }
+
+  private carnivoreColor(g: number[], energy: number, age: number): string {
+    const vivid = g[0] * 0.6 + (1 - g[1]) * 0.4;
+    const h = (350 + vivid * 30) % 360;
+    let s = 80 + vivid * 10;
+    let l = 22 + vivid * 33;
+    const grey = energy < 2 ? (2 - energy) * 0.5 : 0;
+    const flash = age < 10 ? (10 - age) * 2 : 0;
+    s = s * (1 - grey);
+    l = Math.min(88, l * (1 - grey) + 50 * grey + flash);
+    return `hsl(${h | 0},${s | 0}%,${l | 0}%)`;
+  }
+
+  private speciesEntityColor(e: Entity): string {
+    const hue = (e.speciesId * 137.508) % 360;
+    const energyNorm = Math.min(1, e.energy / 25);
+    const grey = e.energy < 2 ? (2 - e.energy) * 0.5 : 0;
+    const s = 68 * (1 - grey);
+    const l = Math.min(88, (28 + energyNorm * 42) * (1 - grey) + 50 * grey);
+    return `hsl(${hue | 0},${s | 0}%,${l | 0}%)`;
+  }
+
+  private drawPlant(e: Entity, sx: number, sy: number, zs: number): void {
+    const ctx = this.ctx;
+    const energyNorm = Math.min(1, Math.max(0, e.energy / 20));
+    const r = Math.max(2, 2 + energyNorm * 4) * zs;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fillStyle = this.speciesTintEnabled ? this.speciesEntityColor(e) : this.plantColor(e.genome, e.energy, e.age);
+    ctx.fill();
+  }
+
+  private drawHerbivore(e: Entity, sx: number, sy: number, zs: number): void {
+    const ctx = this.ctx;
+    const r = Math.max(3, 2.5 + (e.genome[1] ?? 0.5) * 3.5) * zs;
+    const color = this.speciesTintEnabled ? this.speciesEntityColor(e) : this.herbivoreColor(e.genome, e.energy, e.age);
+
+    const dx = e.prevX !== undefined ? e.x - e.prevX : 0;
+    const dy = e.prevY !== undefined ? e.y - e.prevY : 0;
+    const angle = (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) ? Math.atan2(dy, dx) : -Math.PI / 2;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    const tipX = sx + cosA * r;
+    const tipY = sy + sinA * r;
+    const blX = sx + cosA * (-r * 0.6) - sinA * (-r * 0.85);
+    const blY = sy + sinA * (-r * 0.6) + cosA * (-r * 0.85);
+    const brX = sx + cosA * (-r * 0.6) - sinA * (r * 0.85);
+    const brY = sy + sinA * (-r * 0.6) + cosA * (r * 0.85);
+
+    if (e.energy > 20) {
+      ctx.shadowBlur = 8 * zs;
+      ctx.shadowColor = '#7dd3fc';
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(blX, blY);
+    ctx.lineTo(brX, brY);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    if (e.energy > 20) ctx.shadowBlur = 0;
+  }
+
+  private drawCarnivore(e: Entity, sx: number, sy: number, zs: number): void {
+    const ctx = this.ctx;
+    const baseR = Math.max(3, 3 + (e.genome[1] ?? 0.5) * 3) * zs;
+    const r = e.hunting ? baseR * 1.25 : baseR;
+    const color = this.speciesTintEnabled ? this.speciesEntityColor(e) : this.carnivoreColor(e.genome, e.energy, e.age);
+
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - r);
+    ctx.lineTo(sx + r * 0.72, sy);
+    ctx.lineTo(sx, sy + r);
+    ctx.lineTo(sx - r * 0.72, sy);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
   }
 
   private drawMeteorFlash(): void {
