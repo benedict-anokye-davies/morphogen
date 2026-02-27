@@ -405,7 +405,8 @@ export class Renderer {
 
     const lines = [
       { label: `FPS: ${Math.round(this.fps)}`, color: '#888' },
-      { label: `Tick: ${stats.tick}`, color: '#888' },
+      { label: `Year ${(this.simulation as any).year} | ${(this.simulation as any).season} Day ${(this.simulation as any).day} | Gen ${(this.simulation as any).generation}`, color: '#e2e8f0' },
+      { label: `Tick: ${stats.tick}`, color: '#64748b' },
       { label: `Plants: ${stats.plantCount}`, color: COLORS.plant },
       { label: `Herbivores: ${stats.herbivoreCount}`, color: COLORS.herbivore },
       { label: `Carnivores: ${stats.carnivoreCount}`, color: COLORS.carnivore },

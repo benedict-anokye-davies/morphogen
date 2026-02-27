@@ -8,11 +8,19 @@ class SeededRNG {
   range(min: number, max: number): number { return min + this.next() * (max - min); }
 }
 
-const MAX_PLANTS = 800, MAX_HERBIVORES = 400, MAX_CARNIVORES = 120;
+const MAX_PLANTS = 1000, MAX_HERBIVORES = 500, MAX_CARNIVORES = 150;
+const TICKS_PER_DAY = 50;
+const DAYS_PER_SEASON = 30;
+const SEASONS_PER_YEAR = 4;
+const TICKS_PER_YEAR = TICKS_PER_DAY * DAYS_PER_SEASON * SEASONS_PER_YEAR;
 const KIND_SPECIES_ID: Record<string, number> = { plant: 1, herbivore: 2, carnivore: 3 };
 
 export class Simulation {
   entities: Entity[] = []; terrain: TerrainCell[][]; tickCount = 0;
+  get year(): number { return Math.floor(this.tickCount / TICKS_PER_YEAR) + 1; }
+  get season(): string { const s = Math.floor((this.tickCount % TICKS_PER_YEAR) / (TICKS_PER_DAY * DAYS_PER_SEASON)); return ['Spring', 'Summer', 'Autumn', 'Winter'][s]; }
+  get day(): number { return Math.floor((this.tickCount % (TICKS_PER_DAY * DAYS_PER_SEASON)) / TICKS_PER_DAY) + 1; }
+  get generation(): number { return Math.floor(this.tickCount / 200) + 1; }
   readonly width: number; readonly height: number;
   private rng: SeededRNG; private nextId = 0;
   walls: Set<string> = new Set(); scorchedCells: Set<string> = new Set(); rainBoostMap: Map<string, number> = new Map();
@@ -73,9 +81,9 @@ export class Simulation {
   }
   addEntity(kind: Entity['kind'], x: number, y: number): void { this.entities.push(this.createEntityAt(kind, x, y)); }
   private populate(): void {
-    for (let i = 0; i < 400; i++) this.entities.push(this.createEntity('plant'));
-    for (let i = 0; i < 80; i++) this.entities.push(this.createEntity('herbivore'));
-    for (let i = 0; i < 30; i++) this.entities.push(this.createEntity('carnivore'));
+    for (let i = 0; i < 500; i++) this.entities.push(this.createEntity('plant'));
+    for (let i = 0; i < 150; i++) this.entities.push(this.createEntity('herbivore'));
+    for (let i = 0; i < 50; i++) this.entities.push(this.createEntity('carnivore'));
   }
   private distSq(a: Entity, b: Entity): number { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; }
   isBlocked(x: number, y: number): boolean {
@@ -154,11 +162,13 @@ export class Simulation {
     return 0;
   }
   private tickPlant(e: Entity): void {
-    e.energy += 0.5; if (e.energy > 20 && this.rng.next() < 0.08 * this.plantReproductionMultiplier) this.spawnOffspring(e); if (e.energy <= 0 || e.age > 500) e.alive = false;
+    const growth = this.season === 'Spring' ? 0.8 : this.season === 'Summer' ? 0.7 : this.season === 'Winter' ? 0.2 : 0.5;
+    e.energy += growth; if (e.energy > 20 && this.rng.next() < 0.08 * this.plantReproductionMultiplier) this.spawnOffspring(e); if (e.energy <= 0 || e.age > 500) e.alive = false;
   }
   private tickHerbivore(e: Entity): void {
-    e.energy -= 0.08;
-    const target = this.findNearest(e, 'plant', 60);
+    const seasonMod = this.season === 'Winter' ? 1.5 : this.season === 'Summer' ? 0.7 : 1.0;
+    e.energy -= 0.06 * seasonMod;
+    const target = this.findNearest(e, 'plant', 80);
     e.prevX = e.x;
     e.prevY = e.y;
     if (target) {
@@ -171,8 +181,9 @@ export class Simulation {
     if (e.energy <= 0 || e.age > 600) e.alive = false;
   }
   private tickCarnivore(e: Entity): void {
-    e.energy -= 0.2;
-    const target = this.findNearest(e, 'herbivore', 70);
+    const cSeasonMod = this.season === 'Winter' ? 1.3 : this.season === 'Summer' ? 0.8 : 1.0;
+    e.energy -= 0.12 * cSeasonMod;
+    const target = this.findNearest(e, 'herbivore', 90);
     e.prevX = e.x;
     e.prevY = e.y;
     e.hunting = target !== null;
@@ -203,8 +214,8 @@ export class Simulation {
     this.entities = this.entities.filter(e => e.alive);
     const plants = this.countAlive('plant'), herbivores = this.countAlive('herbivore'), carnivores = this.countAlive('carnivore');
     if (plants < 100) for (let i = 0; i < 30; i++) this.entities.push(this.createEntity('plant'));
-    if (herbivores < 20 && plants > 50) for (let i = 0; i < 15; i++) this.entities.push(this.createEntity('herbivore'));
-    if (carnivores < 8 && herbivores > 15) for (let i = 0; i < 8; i++) this.entities.push(this.createEntity('carnivore'));
+    if (herbivores < 40 && plants > 30) for (let i = 0; i < 20; i++) this.entities.push(this.createEntity('herbivore'));
+    if (carnivores < 15 && herbivores > 10) for (let i = 0; i < 10; i++) this.entities.push(this.createEntity('carnivore'));
   }
   getStats(): WorldStats {
     let plantCount = 0, herbivoreCount = 0, carnivoreCount = 0, totalEnergy = 0;
