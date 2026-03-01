@@ -98,16 +98,11 @@ canvas.addEventListener('mousedown', (e: MouseEvent) => {
     simulation.removeNearestEntity(cell.x, cell.y, 15);
     return;
   }
-
   if (e.button !== 0) return;
-
   isMouseDown    = true;
   isDraggingTool = tools.activeTool !== ToolType.Select;
-
   if (!isDraggingTool) return;
-
   const cell = screenToCell(e.clientX, e.clientY);
-
   if (tools.activeTool === ToolType.Meteor) {
     tools.applyAt(cell.x, cell.y);
     renderer.triggerMeteorFlash();
@@ -118,9 +113,7 @@ canvas.addEventListener('mousedown', (e: MouseEvent) => {
 
 window.addEventListener('mousemove', (e: MouseEvent) => {
   renderer.setCursorPos(e.clientX, e.clientY);
-
   if (!isMouseDown || !isDraggingTool) return;
-
   const t = tools.activeTool;
   if (t === ToolType.Wall || t === ToolType.EraseWall) {
     const cell = screenToCell(e.clientX, e.clientY);
@@ -136,15 +129,9 @@ window.addEventListener('mouseup', () => {
 document.addEventListener('keydown', (e: KeyboardEvent) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-
   const tool = hotkeyMap[e.key];
-  if (tool !== undefined) {
-    activateTool(tool);
-    return;
-  }
-
+  if (tool !== undefined) { activateTool(tool); return; }
   const key = e.key.toLowerCase();
-
   switch (key) {
     case ' ':
       e.preventDefault();
@@ -187,20 +174,19 @@ document.addEventListener('keydown', (e: KeyboardEvent) => {
 
 function frame(): void {
   const ticks = timeController.ticksThisFrame();
-
   for (let i = 0; i < ticks; i++) {
     disasterManager.applyDisasters(simulation, simulation.tickCount);
     simulation.tick();
-    speciesTracker.update(simulation.entities, simulation.tickCount);
+    if (simulation.tickCount % 5 === 0) {
+      speciesTracker.update(simulation.entities, simulation.tickCount);
+    }
     renderer.recordStats();
   }
-
   if (ticks > 0) {
     renderer.updateSpeciesData(speciesTracker.species);
     encyclopedia.setData(speciesTracker.species);
     phyloTree.setData(speciesTracker.species);
   }
-
   renderer.render();
   requestAnimationFrame(frame);
 }

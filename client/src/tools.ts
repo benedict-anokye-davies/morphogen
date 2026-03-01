@@ -1,4 +1,4 @@
-import { Simulation } from './simulation';
+import { Simulation, AUTOTROPH_GENOME, FORAGER_GENOME, PREDATOR_GENOME } from './simulation';
 
 export enum ToolType {
   Select         = 0,
@@ -25,9 +25,9 @@ export interface ToolDef {
 
 export const TOOL_DEFS: Record<ToolType, ToolDef> = {
   [ToolType.Select]:         { name: 'Select',     hotkey: '1', cursor: 'default',   radius: 0,  color: '#e5e7eb', icon: '>>' },
-  [ToolType.SpawnPlant]:     { name: 'Plant',      hotkey: '2', cursor: 'crosshair', radius: 0,  color: '#22c55e', icon: 'PL' },
-  [ToolType.SpawnHerbivore]: { name: 'Herbivore',  hotkey: '3', cursor: 'crosshair', radius: 0,  color: '#3b82f6', icon: 'HB' },
-  [ToolType.SpawnCarnivore]: { name: 'Carnivore',  hotkey: '4', cursor: 'crosshair', radius: 0,  color: '#ef4444', icon: 'CR' },
+  [ToolType.SpawnPlant]:     { name: 'Autotroph',  hotkey: '2', cursor: 'crosshair', radius: 0,  color: '#22c55e', icon: 'AT' },
+  [ToolType.SpawnHerbivore]: { name: 'Forager',    hotkey: '3', cursor: 'crosshair', radius: 0,  color: '#3b82f6', icon: 'FG' },
+  [ToolType.SpawnCarnivore]: { name: 'Predator',   hotkey: '4', cursor: 'crosshair', radius: 0,  color: '#ef4444', icon: 'PR' },
   [ToolType.Kill]:           { name: 'Kill',       hotkey: '5', cursor: 'crosshair', radius: 15, color: '#f97316', icon: 'KL' },
   [ToolType.Feed]:           { name: 'Feed',       hotkey: '6', cursor: 'crosshair', radius: 30, color: '#facc15', icon: 'FD' },
   [ToolType.Poison]:         { name: 'Poison',     hotkey: '7', cursor: 'crosshair', radius: 30, color: '#a855f7', icon: 'PZ' },
@@ -70,16 +70,15 @@ export class ToolManager {
 
   applyAt(cellX: number, cellY: number): void {
     const sim = this.simulation;
-
     switch (this.activeTool) {
       case ToolType.SpawnPlant:
-        sim.addEntity('plant', cellX, cellY);
+        sim.addEntity(AUTOTROPH_GENOME, cellX, cellY);
         break;
       case ToolType.SpawnHerbivore:
-        sim.addEntity('herbivore', cellX, cellY);
+        sim.addEntity(FORAGER_GENOME, cellX, cellY);
         break;
       case ToolType.SpawnCarnivore:
-        sim.addEntity('carnivore', cellX, cellY);
+        sim.addEntity(PREDATOR_GENOME, cellX, cellY);
         break;
       case ToolType.Kill:
         sim.removeNearestEntity(cellX, cellY, TOOL_DEFS[ToolType.Kill].radius);

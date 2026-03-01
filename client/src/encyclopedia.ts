@@ -1,4 +1,5 @@
 import { Species } from './species';
+import { TRAIT_LABELS } from './types';
 
 type SortMode = 'population' | 'age' | 'alpha';
 
@@ -6,7 +7,6 @@ const PAD = 16;
 const ITEM_H = 38;
 const HEADER_H = 48;
 const SORT_BAR_H = 36;
-const TRAIT_NAMES = ['Speed', 'Size', 'Sense', 'Metabolism'];
 
 function statusOf(sp: Species): 'Extinct' | 'Endangered' | 'Alive' {
   if (sp.extinctTick !== null) return 'Extinct';
@@ -25,6 +25,16 @@ function statusColor(status: string): string {
   if (status === 'Extinct') return '#ef4444';
   if (status === 'Endangered') return '#f59e0b';
   return '#22c55e';
+}
+
+function strategyLabel(kind: string): string {
+  switch (kind) {
+    case 'autotroph': return 'Autotroph';
+    case 'forager':   return 'Forager';
+    case 'predator':  return 'Predator';
+    case 'generalist': return 'Generalist';
+    default: return kind;
+  }
 }
 
 export class Encyclopedia {
@@ -65,26 +75,11 @@ export class Encyclopedia {
     });
   }
 
-  toggle(): void {
-    this.open = !this.open;
-    if (this.open) this.scrollOffset = 0;
-  }
-
-  show(): void {
-    this.open = true;
-  }
-
-  hide(): void {
-    this.open = false;
-  }
-
-  isOpen(): boolean {
-    return this.open;
-  }
-
-  selectSpecies(id: number): void {
-    this.selectedId = id;
-  }
+  toggle(): void { this.open = !this.open; if (this.open) this.scrollOffset = 0; }
+  show(): void { this.open = true; }
+  hide(): void { this.open = false; }
+  isOpen(): boolean { return this.open; }
+  selectSpecies(id: number): void { this.selectedId = id; }
 
   setData(data: Map<number, Species>): void {
     this.speciesData = data;
@@ -93,13 +88,10 @@ export class Encyclopedia {
     }
   }
 
-  getSpeciesData(): Map<number, Species> {
-    return this.speciesData;
-  }
+  getSpeciesData(): Map<number, Species> { return this.speciesData; }
 
   render(ctx: CanvasRenderingContext2D, tick: number): void {
     this.clickZones = [];
-
     const cw = this.canvas.width;
     const ch = this.canvas.height;
     const ow = cw * 0.8;
@@ -110,21 +102,17 @@ export class Encyclopedia {
     ctx.fillStyle = 'rgba(8, 8, 16, 0.94)';
     this.roundRect(ctx, ox, oy, ow, oh, 8);
     ctx.fill();
-
     ctx.strokeStyle = 'rgba(255,255,255,0.1)';
     ctx.lineWidth = 1;
     this.roundRect(ctx, ox, oy, ow, oh, 8);
     ctx.stroke();
-
     ctx.fillStyle = '#e2e8f0';
     ctx.font = 'bold 16px monospace';
     ctx.textBaseline = 'middle';
     ctx.fillText('Species Encyclopedia', ox + PAD, oy + HEADER_H / 2);
-
     ctx.fillStyle = '#475569';
     ctx.font = '11px monospace';
     ctx.fillText('Tab / Esc to close', ox + ow - PAD - 130, oy + HEADER_H / 2);
-
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -135,29 +123,22 @@ export class Encyclopedia {
     const lpW = ow * 0.3;
     const rpX = ox + lpW + 1;
     const rpW = ow - lpW - 1;
-
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.beginPath();
     ctx.moveTo(rpX, oy + HEADER_H);
     ctx.lineTo(rpX, oy + oh);
     ctx.stroke();
 
-    this.drawLeftPanel(ctx, ox, oy, lpW, oh, tick);
+    this.drawLeftPanel(ctx, ox, oy, lpW, oh);
     this.drawRightPanel(ctx, rpX, oy, rpW, oh, tick);
   }
 
-  private drawLeftPanel(
-    ctx: CanvasRenderingContext2D,
-    ox: number, oy: number, pw: number, oh: number,
-    _tick: number,
-  ): void {
+  private drawLeftPanel(ctx: CanvasRenderingContext2D, ox: number, oy: number, pw: number, oh: number): void {
     const sortY = oy + HEADER_H;
     this.drawSortBar(ctx, ox, sortY, pw);
-
     const listY = sortY + SORT_BAR_H;
     const listH = oh - HEADER_H - SORT_BAR_H;
     const sorted = this.sortedSpecies();
-
     const maxScroll = Math.max(0, sorted.length * ITEM_H - listH);
     this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
 
@@ -170,12 +151,8 @@ export class Encyclopedia {
       const sp = sorted[i];
       const itemY = listY + i * ITEM_H - this.scrollOffset;
       if (itemY + ITEM_H < listY || itemY > listY + listH) continue;
-
       const isSelected = sp.id === this.selectedId;
-      const isHovered =
-        this.mouseX >= ox && this.mouseX < ox + pw &&
-        this.mouseY >= itemY && this.mouseY < itemY + ITEM_H;
-
+      const isHovered = this.mouseX >= ox && this.mouseX < ox + pw && this.mouseY >= itemY && this.mouseY < itemY + ITEM_H;
       if (isSelected) {
         ctx.fillStyle = 'rgba(99, 102, 241, 0.25)';
         ctx.fillRect(ox, itemY, pw, ITEM_H);
@@ -183,77 +160,55 @@ export class Encyclopedia {
         ctx.fillStyle = 'rgba(255,255,255,0.05)';
         ctx.fillRect(ox, itemY, pw, ITEM_H);
       }
-
-      const dot = dotColor(sp);
       ctx.beginPath();
       ctx.arc(ox + PAD + 6, itemY + ITEM_H / 2, 5, 0, Math.PI * 2);
-      ctx.fillStyle = dot;
+      ctx.fillStyle = dotColor(sp);
       ctx.fill();
-
       ctx.fillStyle = isSelected ? '#e2e8f0' : '#94a3b8';
       ctx.font = '12px monospace';
       ctx.textBaseline = 'middle';
       const nameX = ox + PAD + 18;
       const maxNameW = pw - PAD - 18 - 40;
       ctx.fillText(this.truncate(ctx, sp.name, maxNameW), nameX, itemY + ITEM_H / 2 - 7);
-
       ctx.fillStyle = '#4b5563';
       ctx.font = '10px monospace';
-      ctx.fillText(`${sp.currentPopulation}`, nameX, itemY + ITEM_H / 2 + 7);
-
+      ctx.fillText('' + sp.currentPopulation, nameX, itemY + ITEM_H / 2 + 7);
       ctx.strokeStyle = 'rgba(255,255,255,0.04)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(ox + PAD, itemY + ITEM_H - 1);
       ctx.lineTo(ox + pw - PAD, itemY + ITEM_H - 1);
       ctx.stroke();
-
       const capturedId = sp.id;
-      const capturedItemY = itemY;
-      this.clickZones.push({
-        x: ox, y: capturedItemY, w: pw, h: ITEM_H,
-        fn: () => { this.selectedId = capturedId; },
-      });
+      this.clickZones.push({ x: ox, y: itemY, w: pw, h: ITEM_H, fn: () => { this.selectedId = capturedId; } });
     }
-
     ctx.restore();
   }
 
   private drawSortBar(ctx: CanvasRenderingContext2D, ox: number, oy: number, pw: number): void {
     ctx.fillStyle = 'rgba(255,255,255,0.03)';
     ctx.fillRect(ox, oy, pw, SORT_BAR_H);
-
     const modes: SortMode[] = ['population', 'age', 'alpha'];
     const labels = ['Pop', 'Age', 'A-Z'];
     const btnW = (pw - PAD * 2 - 8) / 3;
-
     for (let i = 0; i < modes.length; i++) {
       const bx = ox + PAD + i * (btnW + 4);
       const by = oy + 6;
       const bh = SORT_BAR_H - 12;
       const active = this.sortMode === modes[i];
-      const hovered =
-        this.mouseX >= bx && this.mouseX < bx + btnW &&
-        this.mouseY >= by && this.mouseY < by + bh;
-
+      const hovered = this.mouseX >= bx && this.mouseX < bx + btnW && this.mouseY >= by && this.mouseY < by + bh;
       ctx.fillStyle = active ? 'rgba(99,102,241,0.6)' : hovered ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)';
       this.roundRect(ctx, bx, by, btnW, bh, 4);
       ctx.fill();
-
       ctx.fillStyle = active ? '#e2e8f0' : '#64748b';
       ctx.font = '10px monospace';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
       ctx.fillText(labels[i], bx + btnW / 2, by + bh / 2);
       ctx.textAlign = 'left';
-
       const mode = modes[i];
-      this.clickZones.push({
-        x: bx, y: by, w: btnW, h: bh,
-        fn: () => { this.sortMode = mode; this.scrollOffset = 0; },
-      });
+      this.clickZones.push({ x: bx, y: by, w: btnW, h: bh, fn: () => { this.sortMode = mode; this.scrollOffset = 0; } });
     }
-
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -262,13 +217,8 @@ export class Encyclopedia {
     ctx.stroke();
   }
 
-  private drawRightPanel(
-    ctx: CanvasRenderingContext2D,
-    ox: number, oy: number, pw: number, oh: number,
-    tick: number,
-  ): void {
+  private drawRightPanel(ctx: CanvasRenderingContext2D, ox: number, oy: number, pw: number, oh: number, tick: number): void {
     const sp = this.selectedId !== null ? this.speciesData.get(this.selectedId) : null;
-
     if (!sp) {
       ctx.fillStyle = '#374151';
       ctx.font = '13px monospace';
@@ -284,7 +234,6 @@ export class Encyclopedia {
     ctx.beginPath();
     ctx.arc(ox + PAD + 8, cy + 12, 8, 0, Math.PI * 2);
     ctx.fill();
-
     ctx.fillStyle = '#e2e8f0';
     ctx.font = 'bold 18px monospace';
     ctx.textBaseline = 'top';
@@ -315,10 +264,10 @@ export class Encyclopedia {
     ctx.textBaseline = 'top';
 
     const metaPairs: Array<[string, string]> = [
-      ['Kind', sp.kind],
-      ['Born', `tick ${sp.bornTick}`],
-      ['Extinct', sp.extinctTick !== null ? `tick ${sp.extinctTick}` : '—'],
-      ['Population', `${sp.currentPopulation} / ${sp.peakPopulation} peak`],
+      ['Strategy', strategyLabel(sp.kind)],
+      ['Born', 'tick ' + sp.bornTick],
+      ['Extinct', sp.extinctTick !== null ? 'tick ' + sp.extinctTick : '\u2014'],
+      ['Population', sp.currentPopulation + ' / ' + sp.peakPopulation + ' peak'],
     ];
 
     for (let i = 0; i < metaPairs.length; i++) {
@@ -345,10 +294,11 @@ export class Encyclopedia {
     cy += 18;
 
     const barW = pw - PAD * 2 - 80;
-    for (let i = 0; i < Math.min(sp.averageGenome.length, TRAIT_NAMES.length); i++) {
+    const traitCount = Math.min(sp.averageGenome.length, TRAIT_LABELS.length);
+    for (let i = 0; i < traitCount; i++) {
       const val = sp.averageGenome[i] ?? 0;
       ctx.fillStyle = '#374151';
-      ctx.fillText(TRAIT_NAMES[i], ox + PAD, cy + 4);
+      ctx.fillText(TRAIT_LABELS[i], ox + PAD, cy + 4);
       const bx = ox + PAD + 80;
       ctx.fillStyle = '#1e293b';
       ctx.fillRect(bx, cy + 2, barW, 10);
@@ -388,7 +338,6 @@ export class Encyclopedia {
         ctx.fillText('Evolved from:', ox + PAD, cy);
         ctx.fillStyle = parent.color;
         ctx.fillText(parent.name, ox + PAD + 90, cy);
-
         const pid = sp.parentId;
         this.clickZones.push({
           x: ox + PAD + 90, y: cy - 2, w: ctx.measureText(parent.name).width + 4, h: 16,
@@ -403,51 +352,40 @@ export class Encyclopedia {
       ctx.fillStyle = '#4b5563';
       ctx.font = '11px monospace';
       ctx.textBaseline = 'top';
-      ctx.fillText(`Descendants (${descendants.length}):`, ox + PAD, cy);
+      ctx.fillText('Descendants (' + descendants.length + '):', ox + PAD, cy);
       cy += 16;
       for (const d of descendants.slice(0, 5)) {
         ctx.fillStyle = d.color;
-        ctx.fillText(`• ${d.name}`, ox + PAD + 8, cy);
+        ctx.fillText('\u2022 ' + d.name, ox + PAD + 8, cy);
         const did = d.id;
-        this.clickZones.push({
-          x: ox + PAD, y: cy - 2, w: gw, h: 16,
-          fn: () => { this.selectedId = did; },
-        });
+        this.clickZones.push({ x: ox + PAD, y: cy - 2, w: gw, h: 16, fn: () => { this.selectedId = did; } });
         cy += 16;
       }
       if (descendants.length > 5) {
         ctx.fillStyle = '#374151';
-        ctx.fillText(`  + ${descendants.length - 5} more`, ox + PAD + 8, cy);
+        ctx.fillText('  + ' + (descendants.length - 5) + ' more', ox + PAD + 8, cy);
       }
     }
 
     void tick;
   }
 
-  private drawMiniGraph(
-    ctx: CanvasRenderingContext2D,
-    x: number, y: number, w: number, h: number,
-    history: number[], color: string,
-  ): void {
+  private drawMiniGraph(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, history: number[], color: string): void {
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = 'rgba(255,255,255,0.05)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
-
     if (history.length < 2) return;
-
     let maxVal = 1;
     for (const v of history) if (v > maxVal) maxVal = v;
-
     ctx.beginPath();
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     for (let i = 0; i < history.length; i++) {
       const px = x + (i / (history.length - 1)) * w;
       const py = y + h - (history[i] / maxVal) * h;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     }
     ctx.stroke();
     ctx.lineWidth = 1;
@@ -456,26 +394,20 @@ export class Encyclopedia {
   private sortedSpecies(): Species[] {
     const list = [...this.speciesData.values()];
     switch (this.sortMode) {
-      case 'population':
-        return list.sort((a, b) => b.currentPopulation - a.currentPopulation);
-      case 'age':
-        return list.sort((a, b) => a.bornTick - b.bornTick);
-      case 'alpha':
-        return list.sort((a, b) => a.name.localeCompare(b.name));
+      case 'population': return list.sort((a, b) => b.currentPopulation - a.currentPopulation);
+      case 'age': return list.sort((a, b) => a.bornTick - b.bornTick);
+      case 'alpha': return list.sort((a, b) => a.name.localeCompare(b.name));
     }
   }
 
   private truncate(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
     if (ctx.measureText(text).width <= maxW) return text;
     let t = text;
-    while (t.length > 0 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
-    return t + '…';
+    while (t.length > 0 && ctx.measureText(t + '\u2026').width > maxW) t = t.slice(0, -1);
+    return t + '\u2026';
   }
 
-  private roundRect(
-    ctx: CanvasRenderingContext2D,
-    x: number, y: number, w: number, h: number, r: number,
-  ): void {
+  private roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.lineTo(x + w - r, y);

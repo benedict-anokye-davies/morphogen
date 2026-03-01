@@ -1,4 +1,5 @@
 import { Simulation } from './simulation';
+import { Trait } from './types';
 
 export type DisasterType = 'IceAge' | 'Plague' | 'Flood' | 'Drought' | 'SolarFlare';
 
@@ -86,13 +87,16 @@ export class DisasterManager {
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
       if (!e.alive) continue;
-      if (e.kind === 'plant') {
+      const photo = e.genome[Trait.Photosynthesis];
+      const speed = e.genome[Trait.Speed];
+
+      if (photo > 0.3 && speed < 0.2) {
         const gx = Math.floor(e.x);
         const gy = Math.floor(e.y);
         if (gx >= 0 && gx < width && gy >= 0 && gy < height && COLD_BIOMES.has(terrain[gy][gx].biome)) {
           e.energy -= 1.0;
         }
-      } else if (e.kind === 'herbivore') {
+      } else if (speed > 0.2) {
         e.energy -= 0.075;
       }
     }
@@ -131,8 +135,10 @@ export class DisasterManager {
     const { entities } = simulation;
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
-      if (!e.alive || e.kind !== 'plant') continue;
-      e.energy -= 0.5;
+      if (!e.alive) continue;
+      if (e.genome[Trait.Photosynthesis] > 0.3) {
+        e.energy -= 0.5;
+      }
     }
   }
 
@@ -140,8 +146,8 @@ export class DisasterManager {
     const { entities } = simulation;
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
-      if (!e.alive || e.kind !== 'plant') continue;
-      e.energy += 5;
+      if (!e.alive) continue;
+      e.energy += e.genome[Trait.Photosynthesis] * 5;
     }
   }
 }

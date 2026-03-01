@@ -1,4 +1,4 @@
-import { Entity } from './types';
+import { Entity, GENOME_LENGTH } from './types';
 
 export interface Species {
   id: number;
@@ -35,7 +35,7 @@ const EPITHET_POOL = [
 
 export function speciesColor(id: number): string {
   const hue = (id * 137.508) % 360;
-  return `hsl(${hue}, 68%, 58%)`;
+  return 'hsl(' + hue + ', 68%, 58%)';
 }
 
 function genomeDistance(a: number[], b: number[]): number {
@@ -48,9 +48,20 @@ function genomeDistance(a: number[], b: number[]): number {
   return Math.sqrt(sum);
 }
 
+function classifyByGenome(genome: number[]): string {
+  const photo = genome[0] ?? 0;
+  const speed = genome[1] ?? 0;
+  const aggr  = genome[3] ?? 0;
+
+  if (aggr > 0.5 && speed > 0.3) return 'predator';
+  if (speed > 0.3 && aggr <= 0.4) return 'forager';
+  if (photo > 0.4 && speed <= 0.3) return 'autotroph';
+  return 'generalist';
+}
+
 export class SpeciesTracker {
   species: Map<number, Species> = new Map();
-  nextSpeciesId = 4;
+  nextSpeciesId = 2;
   private usedNames = new Set<string>();
 
   generateName(): string {
@@ -59,7 +70,7 @@ export class SpeciesTracker {
     do {
       const genus = GENUS_POOL[Math.floor(Math.random() * GENUS_POOL.length)];
       const epithet = EPITHET_POOL[Math.floor(Math.random() * EPITHET_POOL.length)];
-      name = `${genus} ${epithet}`;
+      name = genus + ' ' + epithet;
       attempts++;
     } while (this.usedNames.has(name) && attempts < 500);
     this.usedNames.add(name!);
@@ -67,38 +78,32 @@ export class SpeciesTracker {
   }
 
   initBaseSpecies(entities: Entity[], tick: number): void {
-    const kindConfig: Array<{ kind: Entity['kind']; id: number; name: string }> = [
-      { kind: 'plant', id: 1, name: 'Herba viridis' },
-      { kind: 'herbivore', id: 2, name: 'Magna communis' },
-      { kind: 'carnivore', id: 3, name: 'Vorax raptor' },
-    ];
-
-    for (const { kind, id, name } of kindConfig) {
-      const members = entities.filter(e => e.kind === kind && e.alive);
-      const genomeLen = members[0]?.genome.length ?? 4;
-      const avg = new Array(genomeLen).fill(0);
-      for (const e of members) {
-        for (let i = 0; i < genomeLen; i++) avg[i] += e.genome[i];
-      }
-      if (members.length > 0) {
-        for (let i = 0; i < genomeLen; i++) avg[i] /= members.length;
-      }
-
-      this.usedNames.add(name);
-      this.species.set(id, {
-        id,
-        name,
-        parentId: null,
-        kind,
-        bornTick: tick,
-        extinctTick: null,
-        peakPopulation: members.length,
-        currentPopulation: members.length,
-        averageGenome: avg,
-        populationHistory: [members.length],
-        color: speciesColor(id),
-      });
+    const members = entities.filter(e => e.alive);
+    const genomeLen = members[0]?.genome.length ?? GENOME_LENGTH;
+    const avg = new Array(genomeLen).fill(0);
+    for (const e of members) {
+      for (let i = 0; i < genomeLen; i++) avg[i] += e.genome[i];
     }
+    if (members.length > 0) {
+      for (let i = 0; i < genomeLen; i++) avg[i] /= members.length;
+    }
+
+    const name = 'Primordium originalis';
+    this.usedNames.add(name);
+
+    this.species.set(1, {
+      id: 1,
+      name,
+      parentId: null,
+      kind: 'organism',
+      bornTick: tick,
+      extinctTick: null,
+      peakPopulation: members.length,
+      currentPopulation: members.length,
+      averageGenome: avg,
+      populationHistory: [members.length],
+      color: speciesColor(1),
+    });
   }
 
   update(entities: Entity[], tick: number): void {
@@ -114,7 +119,7 @@ export class SpeciesTracker {
       bucket.push(e);
     }
 
-    const speciations: Array<{ parentId: number; outliers: Entity[]; kind: string }> = [];
+    const speciations: Array<{ parentId: number; outliers: Entity[] }> = [];
 
     for (const [spId, members] of groups) {
       const sp = this.species.get(spId);
@@ -127,6 +132,7 @@ export class SpeciesTracker {
       }
       for (let i = 0; i < genomeLen; i++) avg[i] /= members.length;
       sp.averageGenome = avg;
+      sp.kind = classifyByGenome(avg);
 
       sp.currentPopulation = members.length;
       if (sp.currentPopulation > sp.peakPopulation) {
@@ -141,11 +147,11 @@ export class SpeciesTracker {
       }
 
       if (outliers.length >= 2 && outliers.length < members.length) {
-        speciations.push({ parentId: spId, outliers, kind: sp.kind });
+        speciations.push({ parentId: spId, outliers });
       }
     }
 
-    for (const { parentId, outliers, kind } of speciations) {
+    for (const { parentId, outliers } of speciations) {
       const newId = this.nextSpeciesId++;
       const genomeLen = outliers[0].genome.length;
       const avg = new Array(genomeLen).fill(0);
@@ -159,7 +165,7 @@ export class SpeciesTracker {
         id: newId,
         name: this.generateName(),
         parentId,
-        kind,
+        kind: classifyByGenome(avg),
         bornTick: tick,
         extinctTick: null,
         peakPopulation: outliers.length,
@@ -171,10 +177,11 @@ export class SpeciesTracker {
     }
 
     for (const [spId, sp] of this.species) {
-      if (sp.extinctTick !== null) continue;
-      if (!groups.has(spId)) {
+      if (groups.has(spId) && groups.get(spId)!.length > 0) {
+        if (sp.extinctTick !== null) sp.extinctTick = null;
+      } else {
         sp.currentPopulation = 0;
-        sp.extinctTick = tick;
+        if (sp.extinctTick === null) sp.extinctTick = tick;
       }
     }
 
@@ -209,7 +216,6 @@ export class SpeciesTracker {
 
     const roots = childrenOf.get(null) ?? [];
     if (roots.length === 0) return null;
-
     if (roots.length === 1) return buildNode(roots[0]);
 
     const virtualRoot: PhyloNode = {

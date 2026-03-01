@@ -1,6 +1,6 @@
 import { Simulation } from './simulation';
 import { Camera } from './camera';
-import { Entity, WorldStats } from './types';
+import { Entity, WorldStats, Trait } from './types';
 import { Species } from './species';
 import { Encyclopedia } from './encyclopedia';
 import { PhyloTree } from './phylotree';
@@ -9,9 +9,9 @@ import { TimeController } from './timecontrol';
 import { DisasterManager, DisasterType } from './disasters';
 
 const COLORS = {
-  plant:     '#22c55e',
-  herbivore: '#3b82f6',
-  carnivore: '#ef4444',
+  autotroph: '#22c55e',
+  forager:   '#3b82f6',
+  predator:  '#ef4444',
 } as const;
 
 const PALETTE_W    = 50;
@@ -62,56 +62,26 @@ export class Renderer {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Cannot acquire 2D context');
     this.ctx = ctx;
-
     this.terrainCanvas = document.createElement('canvas');
     this.bakeTerrainCache();
   }
 
-  setOverlays(enc: Encyclopedia, phy: PhyloTree): void {
-    this.encyclopedia = enc;
-    this.phyloTree = phy;
-  }
-
-  setToolManager(tm: ToolManager): void {
-    this.toolManager = tm;
-  }
-
-  setTimeController(tc: TimeController): void {
-    this.timeController = tc;
-  }
-
-  setDisasterManager(dm: DisasterManager): void {
-    this.disasterManager = dm;
-  }
-
-  setCursorPos(sx: number, sy: number): void {
-    this.cursorSx = sx;
-    this.cursorSy = sy;
-  }
-
-  triggerMeteorFlash(): void {
-    this.meteorFlash = 1.0;
-  }
-
-  updateSpeciesData(data: Map<number, Species>): void {
-    this.speciesData = data;
-  }
-
-  toggleSpeciesTint(): void {
-    this.speciesTintEnabled = !this.speciesTintEnabled;
-  }
+  setOverlays(enc: Encyclopedia, phy: PhyloTree): void { this.encyclopedia = enc; this.phyloTree = phy; }
+  setToolManager(tm: ToolManager): void { this.toolManager = tm; }
+  setTimeController(tc: TimeController): void { this.timeController = tc; }
+  setDisasterManager(dm: DisasterManager): void { this.disasterManager = dm; }
+  setCursorPos(sx: number, sy: number): void { this.cursorSx = sx; this.cursorSy = sy; }
+  triggerMeteorFlash(): void { this.meteorFlash = 1.0; }
+  updateSpeciesData(data: Map<number, Species>): void { this.speciesData = data; }
+  toggleSpeciesTint(): void { this.speciesTintEnabled = !this.speciesTintEnabled; }
 
   private bakeTerrainCache(): void {
     const terrain = this.simulation.terrain;
     const cs = this.cellSize;
-    const w = this.simulation.width * cs;
-    const h = this.simulation.height * cs;
-
-    this.terrainCanvas.width = w;
-    this.terrainCanvas.height = h;
+    this.terrainCanvas.width = this.simulation.width * cs;
+    this.terrainCanvas.height = this.simulation.height * cs;
     const tctx = this.terrainCanvas.getContext('2d');
     if (!tctx) return;
-
     for (let y = 0; y < this.simulation.height; y++) {
       for (let x = 0; x < this.simulation.width; x++) {
         tctx.fillStyle = terrain[y][x].color;
@@ -130,14 +100,11 @@ export class Renderer {
     const dt = now - this.lastFrameTime;
     this.lastFrameTime = now;
     this.fps += (1000 / dt - this.fps) * 0.05;
-
     this.camera.update();
-
     const { width, height } = this.canvas;
     this.ctx.clearRect(0, 0, width, height);
     this.ctx.fillStyle = '#0a0a0a';
     this.ctx.fillRect(0, 0, width, height);
-
     this.drawTerrain();
     this.drawScorchedCells();
     this.drawRainCells();
@@ -153,7 +120,6 @@ export class Renderer {
     this.drawToolPalette();
     this.drawCursorPreview();
     this.drawToolFooter();
-
     if (this.phyloTree?.isOpen()) {
       this.phyloTree.render(this.ctx);
     } else if (this.encyclopedia?.isOpen()) {
@@ -166,21 +132,13 @@ export class Renderer {
     const origin = this.camera.worldToScreen(0, 0);
     const totalW = this.simulation.width * cs * this.camera.zoom;
     const totalH = this.simulation.height * cs * this.camera.zoom;
-
-    this.ctx.drawImage(
-      this.terrainCanvas,
-      Math.floor(origin.x),
-      Math.floor(origin.y),
-      Math.ceil(totalW),
-      Math.ceil(totalH),
-    );
+    this.ctx.drawImage(this.terrainCanvas, Math.floor(origin.x), Math.floor(origin.y), Math.ceil(totalW), Math.ceil(totalH));
   }
 
   private drawScorchedCells(): void {
     const cs = this.cellSize;
     const cellSz = cs * this.camera.zoom;
     if (cellSz < 0.5) return;
-
     this.ctx.fillStyle = SCORCH_COLOR;
     for (const key of this.simulation.scorchedCells) {
       const comma = key.indexOf(',');
@@ -195,7 +153,6 @@ export class Renderer {
     const cs = this.cellSize;
     const cellSz = cs * this.camera.zoom;
     if (cellSz < 0.5) return;
-
     this.ctx.fillStyle = RAIN_COLOR;
     for (const [key] of this.simulation.rainBoostMap) {
       const comma = key.indexOf(',');
@@ -210,7 +167,6 @@ export class Renderer {
     const cs = this.cellSize;
     const cellSz = cs * this.camera.zoom;
     if (cellSz < 0.5) return;
-
     this.ctx.fillStyle = WALL_COLOR;
     for (const key of this.simulation.walls) {
       const comma = key.indexOf(',');
@@ -219,6 +175,62 @@ export class Renderer {
       const { x, y } = this.camera.worldToScreen(cx * cs, cy * cs);
       this.ctx.fillRect(x, y, cellSz + 0.5, cellSz + 0.5);
     }
+  }
+
+  private genomeColor(e: Entity): string {
+    const photo = e.genome[Trait.Photosynthesis];
+    const speed = e.genome[Trait.Speed];
+    const aggr  = e.genome[Trait.Aggression];
+
+    const greenWeight = Math.max(0, photo - speed * 0.5) * 2;
+    const blueWeight  = Math.max(0, speed * (1 - aggr)) * 1.5;
+    const redWeight   = Math.max(0, aggr * speed) * 2;
+    const total = greenWeight + blueWeight + redWeight + 0.001;
+
+    const gn = greenWeight / total;
+    const bn = blueWeight / total;
+    const rn = redWeight / total;
+
+    let h: number, s: number, l: number;
+
+    if (gn > bn && gn > rn) {
+      h = 100 + (1 - photo) * 40;
+      s = 55 + photo * 30;
+      l = 28 + photo * 25;
+    } else if (rn > bn) {
+      h = (355 + aggr * 20) % 360;
+      s = 65 + aggr * 25;
+      l = 30 + aggr * 20;
+    } else if (bn > 0.01) {
+      h = 210 + speed * 30;
+      s = 55 + speed * 30;
+      l = 28 + speed * 30;
+    } else {
+      h = 45;
+      s = 50;
+      l = 40;
+    }
+
+    if (aggr > 0.5) s = Math.min(95, s + 10);
+
+    const energyNorm = Math.min(1, Math.max(0.15, e.energy / 25));
+    l = l * energyNorm;
+
+    const flash = e.age < 8 ? (8 - e.age) * 2.5 : 0;
+    l = Math.min(90, l + flash);
+
+    const alpha = e.energy < 3 ? 0.3 + (e.energy / 3) * 0.7 : 1.0;
+
+    return 'hsla(' + (h | 0) + ',' + (s | 0) + '%,' + (l | 0) + '%,' + alpha.toFixed(2) + ')';
+  }
+
+  private speciesEntityColor(e: Entity): string {
+    const hue = (e.speciesId * 137.508) % 360;
+    const energyNorm = Math.min(1, e.energy / 25);
+    const grey = e.energy < 2 ? (2 - e.energy) * 0.5 : 0;
+    const s = 68 * (1 - grey);
+    const l = Math.min(88, (28 + energyNorm * 42) * (1 - grey) + 50 * grey);
+    return 'hsl(' + (hue | 0) + ',' + (s | 0) + '%,' + (l | 0) + '%)';
   }
 
   private drawEntities(): void {
@@ -231,16 +243,17 @@ export class Renderer {
 
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
-      if (!e.alive || e.kind !== 'carnivore' || !e.trail) continue;
+      if (!e.alive || !e.trail) continue;
+      if (e.genome[Trait.Speed] <= 0.3 || e.genome[Trait.Aggression] <= 0.4) continue;
       const scr = this.camera.worldToScreen(e.x * cs, e.y * cs);
       if (scr.x < -80 || scr.x > cw + 80 || scr.y < -80 || scr.y > ch + 80) continue;
-      const baseR = Math.max(1.5, (2.5 + (e.genome[1] ?? 0.5) * 2.5) * zs * 0.55);
+      const baseR = Math.max(1.5, (2 + e.genome[Trait.Size] * 4) * zs * 0.45);
       for (let t = 0; t < e.trail.length; t++) {
         const tp = e.trail[t];
         const ts = this.camera.worldToScreen(tp.x * cs, tp.y * cs);
         ctx.beginPath();
         ctx.arc(ts.x, ts.y, baseR * (0.55 + t * 0.2), 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(239,68,68,${((t + 1) * 0.10).toFixed(2)})`;
+        ctx.fillStyle = 'rgba(239,68,68,' + ((t + 1) * 0.10).toFixed(2) + ')';
         ctx.fill();
       }
     }
@@ -252,86 +265,64 @@ export class Renderer {
       const sx = scr.x;
       const sy = scr.y;
       if (sx < -20 || sx > cw + 20 || sy < -20 || sy > ch + 20) continue;
-      switch (e.kind) {
-        case 'plant':     this.drawPlant(e, sx, sy, zs);     break;
-        case 'herbivore': this.drawHerbivore(e, sx, sy, zs); break;
-        case 'carnivore': this.drawCarnivore(e, sx, sy, zs); break;
+
+      const speed = e.genome[Trait.Speed];
+      const color = this.speciesTintEnabled ? this.speciesEntityColor(e) : this.genomeColor(e);
+      const size = Math.max(2, (2 + e.genome[Trait.Size] * 6)) * zs;
+
+      if (speed < 0.15) {
+        this.drawCircleOrganism(e, sx, sy, size, color);
+      } else if (speed < 0.4) {
+        this.drawRoundedOrganism(e, sx, sy, size, color);
+      } else {
+        this.drawTriangleOrganism(e, sx, sy, size, color);
       }
     }
-
     ctx.shadowBlur = 0;
   }
 
-  private plantColor(g: number[], energy: number, age: number): string {
-    const g2 = g[2] ?? 0.5;
-    let h: number, s: number, l: number;
-    if (g2 < 0.5) {
-      const t = g2 * 2;
-      h = 120 - t * 40; s = 70 - t * 10; l = 25 + t * 20;
-    } else if (g2 < 0.8) {
-      const t = (g2 - 0.5) / 0.3;
-      h = 80 - t * 35; s = 60 + t * 15; l = 45 + t * 5;
-    } else {
-      const t = (g2 - 0.8) * 5;
-      h = (45 + t * 235) % 360; s = 75 - t * 15; l = 50 - t * 5;
-    }
-    const grey = energy < 2 ? (2 - energy) * 0.5 : 0;
-    const flash = age < 10 ? (10 - age) * 2 : 0;
-    s = s * (1 - grey);
-    l = Math.min(88, l * (1 - grey) + 50 * grey + flash);
-    const pulse = 0.82 + Math.sin(age * 0.12) * 0.12;
-    return `hsla(${h | 0},${s | 0}%,${l | 0}%,${pulse.toFixed(2)})`;
-  }
-
-  private herbivoreColor(g: number[], energy: number, age: number): string {
-    const vivid = g[0] * 0.6 + (1 - g[1]) * 0.4;
-    const h = 220 - vivid * 30;
-    let s = 75 + vivid * 20;
-    let l = 18 + vivid * 47;
-    const grey = energy < 2 ? (2 - energy) * 0.5 : 0;
-    const flash = age < 10 ? (10 - age) * 2 : 0;
-    s = s * (1 - grey);
-    l = Math.min(88, l * (1 - grey) + 50 * grey + flash);
-    const alpha = energy < 5 ? 0.35 + (energy / 5) * 0.65 : 1.0;
-    return `hsla(${h | 0},${s | 0}%,${l | 0}%,${alpha.toFixed(2)})`;
-  }
-
-  private carnivoreColor(g: number[], energy: number, age: number): string {
-    const vivid = g[0] * 0.6 + (1 - g[1]) * 0.4;
-    const h = (350 + vivid * 30) % 360;
-    let s = 80 + vivid * 10;
-    let l = 22 + vivid * 33;
-    const grey = energy < 2 ? (2 - energy) * 0.5 : 0;
-    const flash = age < 10 ? (10 - age) * 2 : 0;
-    s = s * (1 - grey);
-    l = Math.min(88, l * (1 - grey) + 50 * grey + flash);
-    return `hsl(${h | 0},${s | 0}%,${l | 0}%)`;
-  }
-
-  private speciesEntityColor(e: Entity): string {
-    const hue = (e.speciesId * 137.508) % 360;
-    const energyNorm = Math.min(1, e.energy / 25);
-    const grey = e.energy < 2 ? (2 - e.energy) * 0.5 : 0;
-    const s = 68 * (1 - grey);
-    const l = Math.min(88, (28 + energyNorm * 42) * (1 - grey) + 50 * grey);
-    return `hsl(${hue | 0},${s | 0}%,${l | 0}%)`;
-  }
-
-  private drawPlant(e: Entity, sx: number, sy: number, zs: number): void {
+  private drawCircleOrganism(e: Entity, sx: number, sy: number, r: number, color: string): void {
     const ctx = this.ctx;
-    const energyNorm = Math.min(1, Math.max(0, e.energy / 20));
-    const r = Math.max(2, 2 + energyNorm * 4) * zs;
     ctx.beginPath();
     ctx.arc(sx, sy, r, 0, Math.PI * 2);
-    ctx.fillStyle = this.speciesTintEnabled ? this.speciesEntityColor(e) : this.plantColor(e.genome, e.energy, e.age);
+    ctx.fillStyle = color;
     ctx.fill();
+
+    if (e.genome[Trait.Defense] > 0.5) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(200,200,220,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
   }
 
-  private drawHerbivore(e: Entity, sx: number, sy: number, zs: number): void {
+  private drawRoundedOrganism(e: Entity, sx: number, sy: number, r: number, color: string): void {
     const ctx = this.ctx;
-    const r = Math.max(3, 2.5 + (e.genome[1] ?? 0.5) * 3.5) * zs;
-    const color = this.speciesTintEnabled ? this.speciesEntityColor(e) : this.herbivoreColor(e.genome, e.energy, e.age);
+    const dx = e.prevX !== undefined ? e.x - e.prevX : 0;
+    const dy = e.prevY !== undefined ? e.y - e.prevY : 0;
+    const angle = (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) ? Math.atan2(dy, dx) : -Math.PI / 2;
 
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 1.1, r * 0.75, 0, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+
+    if (e.genome[Trait.Defense] > 0.5) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(200,200,220,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  private drawTriangleOrganism(e: Entity, sx: number, sy: number, r: number, color: string): void {
+    const ctx = this.ctx;
     const dx = e.prevX !== undefined ? e.x - e.prevX : 0;
     const dy = e.prevY !== undefined ? e.y - e.prevY : 0;
     const angle = (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) ? Math.atan2(dy, dx) : -Math.PI / 2;
@@ -345,9 +336,9 @@ export class Renderer {
     const brX = sx + cosA * (-r * 0.6) - sinA * (r * 0.85);
     const brY = sy + sinA * (-r * 0.6) + cosA * (r * 0.85);
 
-    if (e.energy > 20) {
-      ctx.shadowBlur = 8 * zs;
-      ctx.shadowColor = '#7dd3fc';
+    if (e.hunting && e.energy > 20) {
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#ef4444';
     }
 
     ctx.beginPath();
@@ -358,28 +349,20 @@ export class Renderer {
     ctx.fillStyle = color;
     ctx.fill();
 
-    if (e.energy > 20) ctx.shadowBlur = 0;
-  }
+    if (e.hunting && e.energy > 20) ctx.shadowBlur = 0;
 
-  private drawCarnivore(e: Entity, sx: number, sy: number, zs: number): void {
-    const ctx = this.ctx;
-    const baseR = Math.max(3, 3 + (e.genome[1] ?? 0.5) * 3) * zs;
-    const r = e.hunting ? baseR * 1.25 : baseR;
-    const color = this.speciesTintEnabled ? this.speciesEntityColor(e) : this.carnivoreColor(e.genome, e.energy, e.age);
-
-    ctx.beginPath();
-    ctx.moveTo(sx, sy - r);
-    ctx.lineTo(sx + r * 0.72, sy);
-    ctx.lineTo(sx, sy + r);
-    ctx.lineTo(sx - r * 0.72, sy);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
+    if (e.genome[Trait.Defense] > 0.5) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(200,200,220,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
   }
 
   private drawMeteorFlash(): void {
     if (this.meteorFlash <= 0) return;
-    this.ctx.fillStyle = `rgba(255, 180, 60, ${this.meteorFlash})`;
+    this.ctx.fillStyle = 'rgba(255, 180, 60, ' + this.meteorFlash + ')';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.meteorFlash = Math.max(0, this.meteorFlash - 0.05);
   }
@@ -388,7 +371,6 @@ export class Renderer {
     if (!this.disasterManager) return;
     const active = this.disasterManager.activeDisasters;
     if (active.length === 0) return;
-
     const { width, height } = this.canvas;
     for (const d of active) {
       this.ctx.fillStyle = DISASTER_STYLES[d.type].tint;
@@ -400,21 +382,20 @@ export class Renderer {
     const stats = this.simulation.getStats();
     this.ctx.font = '13px monospace';
     this.ctx.textBaseline = 'top';
-
     const speciesCount = [...this.speciesData.values()].filter(s => s.extinctTick === null).length;
-
+    const sim = this.simulation as any;
     const lines = [
-      { label: `FPS: ${Math.round(this.fps)}`, color: '#888' },
-      { label: `Year ${(this.simulation as any).year} | ${(this.simulation as any).season} Day ${(this.simulation as any).day} | Gen ${(this.simulation as any).generation}`, color: '#e2e8f0' },
-      { label: `Tick: ${stats.tick}`, color: '#64748b' },
-      { label: `Plants: ${stats.plantCount}`, color: COLORS.plant },
-      { label: `Herbivores: ${stats.herbivoreCount}`, color: COLORS.herbivore },
-      { label: `Carnivores: ${stats.carnivoreCount}`, color: COLORS.carnivore },
-      { label: `Energy: ${Math.round(stats.totalEnergy)}`, color: '#f59e0b' },
-      { label: `Species: ${speciesCount}`, color: '#a78bfa' },
-      { label: `[Tab] Encyclopedia  [T] Phylotree  [K] Color by species`, color: '#334155' },
+      { label: 'FPS: ' + Math.round(this.fps), color: '#888' },
+      { label: 'Year ' + sim.year + ' | ' + sim.season + ' Day ' + sim.day + ' | Gen ' + sim.generation, color: '#e2e8f0' },
+      { label: 'Tick: ' + stats.tick, color: '#64748b' },
+      { label: 'Population: ' + stats.totalCount, color: '#e5e7eb' },
+      { label: 'Autotrophs: ' + stats.autotrophCount, color: COLORS.autotroph },
+      { label: 'Foragers: ' + stats.foragerCount, color: COLORS.forager },
+      { label: 'Predators: ' + stats.predatorCount, color: COLORS.predator },
+      { label: 'Energy: ' + Math.round(stats.totalEnergy), color: '#f59e0b' },
+      { label: 'Species: ' + speciesCount, color: '#a78bfa' },
+      { label: '[Tab] Encyclopedia  [T] Phylotree  [K] Color by species', color: '#334155' },
     ];
-
     let yOffset = 12;
     for (const line of lines) {
       this.ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -428,16 +409,13 @@ export class Renderer {
   private drawSpeedIndicator(): void {
     if (!this.timeController) return;
     const tc = this.timeController;
-    const label = tc.paused ? 'PAUSED' : `Speed: ${tc.speed}x`;
+    const label = tc.paused ? 'PAUSED' : 'Speed: ' + tc.speed + 'x';
     const color = tc.paused ? '#facc15' : '#a3e635';
-
     this.ctx.font = '13px monospace';
     this.ctx.textBaseline = 'top';
-
     const textW = this.ctx.measureText(label).width;
     const x = this.canvas.width - textW - 16;
     const y = 12;
-
     this.ctx.fillStyle = 'rgba(0,0,0,0.6)';
     this.ctx.fillRect(x - 4, y - 2, textW + 8, 18);
     this.ctx.fillStyle = color;
@@ -448,27 +426,21 @@ export class Renderer {
     if (!this.disasterManager) return;
     const active = this.disasterManager.activeDisasters;
     if (active.length === 0) return;
-
     const bannerH = 26;
     const { width } = this.canvas;
-
     this.ctx.font = 'bold 12px monospace';
     this.ctx.textBaseline = 'middle';
-
     const segW = Math.floor(width / active.length);
     for (let i = 0; i < active.length; i++) {
       const d = active[i];
       const style = DISASTER_STYLES[d.type];
       const elapsed = this.simulation.tickCount - d.startTick;
       const remaining = d.duration - elapsed;
-      const progress = elapsed / d.duration;
-      const pct = Math.round((1 - progress) * 100);
-      const label = `*** ${style.label}  ${remaining}t (${pct}%) ***`;
-
+      const pct = Math.round((1 - elapsed / d.duration) * 100);
+      const label = '*** ' + style.label + '  ' + remaining + 't (' + pct + '%) ***';
       const x = i * segW;
       this.ctx.fillStyle = style.banner;
       this.ctx.fillRect(x, 0, segW, bannerH);
-
       const textW = this.ctx.measureText(label).width;
       this.ctx.fillStyle = '#ffffff';
       this.ctx.fillText(label, x + (segW - textW) / 2, bannerH / 2);
@@ -479,25 +451,20 @@ export class Renderer {
     if (!this.disasterManager) return;
     const records = this.disasterManager.history.slice(-5);
     if (records.length === 0) return;
-
     const pad = 10;
     const lineH = 18;
     const tick = this.simulation.tickCount;
-
     this.ctx.font = '11px monospace';
     this.ctx.textBaseline = 'top';
-
     let y = this.canvas.height - pad - records.length * lineH;
-
     for (const record of records) {
       const age = tick - record.endTick;
       const alpha = Math.max(0.1, 1 - age / 400);
-      const label = `${record.type} [${record.startTick}-${record.endTick}]`;
+      const label = record.type + ' [' + record.startTick + '-' + record.endTick + ']';
       const textW = this.ctx.measureText(label).width;
-
-      this.ctx.fillStyle = `rgba(0,0,0,${(alpha * 0.65).toFixed(2)})`;
+      this.ctx.fillStyle = 'rgba(0,0,0,' + (alpha * 0.65).toFixed(2) + ')';
       this.ctx.fillRect(pad, y - 2, textW + 8, lineH);
-      this.ctx.fillStyle = `rgba(210,210,210,${alpha.toFixed(2)})`;
+      this.ctx.fillStyle = 'rgba(210,210,210,' + alpha.toFixed(2) + ')';
       this.ctx.fillText(label, pad + 4, y);
       y += lineH;
     }
@@ -505,30 +472,25 @@ export class Renderer {
 
   private drawPopulationGraph(): void {
     if (this.history.length < 2) return;
-
     const gw = 220;
     const gh = 110;
     const pad = 10;
     const ox = this.canvas.width - gw - pad;
     const oy = this.canvas.height - gh - pad;
-
     this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
     this.ctx.fillRect(ox, oy, gw, gh);
     this.ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     this.ctx.strokeRect(ox, oy, gw, gh);
-
     const inset = 8;
     const plotW = gw - inset * 2;
     const plotH = gh - inset * 2;
     const plotX = ox + inset;
     const plotY = oy + inset;
-
     let maxVal = 1;
     for (const s of this.history) {
-      maxVal = Math.max(maxVal, s.plantCount, s.herbivoreCount, s.carnivoreCount);
+      maxVal = Math.max(maxVal, s.autotrophCount, s.foragerCount, s.predatorCount);
     }
-
-    const drawLine = (key: 'plantCount' | 'herbivoreCount' | 'carnivoreCount', color: string): void => {
+    const drawLine = (key: 'autotrophCount' | 'foragerCount' | 'predatorCount', color: string): void => {
       this.ctx.beginPath();
       this.ctx.strokeStyle = color;
       this.ctx.lineWidth = 1.5;
@@ -540,54 +502,44 @@ export class Renderer {
       }
       this.ctx.stroke();
     };
-
-    drawLine('plantCount', COLORS.plant);
-    drawLine('herbivoreCount', COLORS.herbivore);
-    drawLine('carnivoreCount', COLORS.carnivore);
-
+    drawLine('autotrophCount', COLORS.autotroph);
+    drawLine('foragerCount', COLORS.forager);
+    drawLine('predatorCount', COLORS.predator);
     this.ctx.lineWidth = 1;
   }
 
   private drawToolPalette(): void {
     if (!this.toolManager) return;
-
     const ch = this.canvas.height;
     const totalH = ALL_TOOLS.length * SLOT_H;
     const startY = Math.max(0, (ch - totalH) / 2);
-
     this.ctx.fillStyle = 'rgba(10,10,10,0.85)';
     this.ctx.fillRect(0, 0, PALETTE_W, ch);
-
     this.ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
     this.ctx.moveTo(PALETTE_W, 0);
     this.ctx.lineTo(PALETTE_W, ch);
     this.ctx.stroke();
-
     for (let i = 0; i < ALL_TOOLS.length; i++) {
       const tool = ALL_TOOLS[i];
       const def = TOOL_DEFS[tool];
       const slotY = startY + i * SLOT_H;
       const active = this.toolManager.activeTool === tool;
-
       if (active) {
         this.ctx.fillStyle = 'rgba(255,255,255,0.12)';
         this.ctx.fillRect(0, slotY, PALETTE_W, SLOT_H);
         this.ctx.fillStyle = def.color;
         this.ctx.fillRect(0, slotY, 3, SLOT_H);
       }
-
       this.ctx.font = 'bold 12px monospace';
       this.ctx.textBaseline = 'middle';
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = active ? def.color : 'rgba(200,200,200,0.65)';
       this.ctx.fillText(def.icon, PALETTE_W / 2, slotY + SLOT_H / 2 - 5);
-
       this.ctx.font = '9px monospace';
       this.ctx.fillStyle = active ? 'rgba(255,255,255,0.8)' : 'rgba(120,120,120,0.7)';
       this.ctx.fillText(def.hotkey, PALETTE_W / 2, slotY + SLOT_H / 2 + 8);
-
       this.ctx.strokeStyle = 'rgba(255,255,255,0.05)';
       this.ctx.lineWidth = 1;
       this.ctx.beginPath();
@@ -595,7 +547,6 @@ export class Renderer {
       this.ctx.lineTo(PALETTE_W - 4, slotY + SLOT_H);
       this.ctx.stroke();
     }
-
     this.ctx.textAlign = 'left';
   }
 
@@ -603,38 +554,31 @@ export class Renderer {
     if (!this.toolManager) return;
     const def = this.toolManager.getActiveDef();
     if (def.radius <= 0) return;
-
     const screenRadius = def.radius * this.cellSize * this.camera.zoom;
-
     this.ctx.beginPath();
     this.ctx.arc(this.cursorSx, this.cursorSy, screenRadius, 0, Math.PI * 2);
     this.ctx.strokeStyle = def.color;
     this.ctx.lineWidth = 1.5;
     this.ctx.globalAlpha = 0.55;
     this.ctx.stroke();
-
     this.ctx.fillStyle = def.color;
     this.ctx.globalAlpha = 0.06;
     this.ctx.fill();
-
     this.ctx.globalAlpha = 1.0;
   }
 
   private drawToolFooter(): void {
     if (!this.toolManager) return;
     const def = this.toolManager.getActiveDef();
-
-    const label = `${def.name}  [${def.hotkey}]${def.radius > 0 ? `  r:${def.radius}` : ''}`;
+    const label = def.name + '  [' + def.hotkey + ']' + (def.radius > 0 ? '  r:' + def.radius : '');
     this.ctx.font = '12px monospace';
     this.ctx.textBaseline = 'bottom';
     this.ctx.textAlign = 'left';
     const tw = this.ctx.measureText(label).width;
     const bx = PALETTE_W + 8;
     const by = this.canvas.height - 8;
-
     this.ctx.fillStyle = 'rgba(0,0,0,0.65)';
     this.ctx.fillRect(bx - 4, by - 16, tw + 12, 20);
-
     this.ctx.fillStyle = def.color;
     this.ctx.fillText(label, bx, by);
   }
