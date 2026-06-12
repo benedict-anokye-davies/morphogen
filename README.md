@@ -19,27 +19,28 @@ The version that actually got interesting was when I deleted all of that and mad
 
 First time I ran it with two organisms and came back ten minutes later to find predators had evolved on their own. Nothing in the code says "hunt other organisms." It just happened because being aggressive toward smaller things turned out to be a viable survival strategy. That was sick.
 
-The maths behind it is real. Lotka-Volterra for population dynamics, Perlin noise for terrain, Gaussian mutation on trait vectors. Its not a game pretending to be science. Its a simulation that happens to be fun to watch.
-## What Makes This Different
+The maths behind it is real. Lotka-Volterra for population dynamics, Perlin noise for terrain, Gaussian mutation on trait vectors. It's not a game pretending to be science. It's a simulation that happens to be fun to watch.
 
-Unlike WorldBox or similar god games, **nothing is scripted**. There are no predefined "plants" or "animals" — every organism has a 12-trait genome, and behavior emerges from evolutionary pressure:
+## What makes this different
 
-- **Photosynthesis vs Speed** are antagonistic — you can't be good at both
-- **Size vs Metabolism** trade-off forces specialization
-- **Aggression vs Defense** creates predator-prey arms races
+Nothing is scripted. There are no predefined "plants" or "animals" — every organism has a 12-trait genome, and behavior emerges from evolutionary pressure:
+
+- Photosynthesis vs Speed are antagonistic — you can't be good at both
+- Size vs Metabolism trade-off forces specialization
+- Aggression vs Defense creates predator-prey arms races
 - Over generations, lineages naturally diverge into autotrophs (plant-like), foragers (herbivore-like), and predators (carnivore-like)
 
 ## Features
 
-- **Procedural Terrain** — Fractal Brownian motion with 9 biomes, hydraulic erosion
-- **Real Evolution** — 12-trait genome with Gaussian mutation and natural selection
-- **Species Tracking** — Auto-generated Latin binomial names, phylogenetic tree visualization
-- **God Tools** — Spawn, kill, feed, poison, draw walls, drop meteors, trigger rain
-- **Natural Disasters** — Ice age, plague, flood, drought, solar flare
-- **Time Control** — Pause, 1-50x speed, tick stepping
+- **Procedural terrain** — Fractal Brownian motion with 9 biomes, hydraulic erosion
+- **Real evolution** — 12-trait genome with Gaussian mutation and natural selection
+- **Species tracking** — Auto-generated Latin binomial names, phylogenetic tree visualization
+- **God tools** — Spawn, kill, feed, poison, draw walls, drop meteors, trigger rain
+- **Natural disasters** — Ice age, plague, flood, drought, solar flare
+- **Time control** — Pause, 1-50x speed, tick stepping
 - **Seasons** — Spring/Summer boost growth, Winter increases metabolism
-- **Species Encyclopedia** — Press Tab to browse all species with genome charts
-- **Phylogenetic Tree** — Press T to view branching evolutionary history
+- **Species encyclopedia** — Press Tab to browse all species with genome charts
+- **Phylogenetic tree** — Press T to view branching evolutionary history
 
 ## Controls
 
@@ -49,22 +50,21 @@ Unlike WorldBox or similar god games, **nothing is scripted**. There are no pred
 | +/- | Speed up / Slow down (1x to 50x) |
 | . | Step one tick |
 | 1-0 | Select tool (Select, Spawn variants, Kill, Feed, Poison, Wall, Meteor, Rain) |
-| Right Click | Quick kill |
-| Tab | Species Encyclopedia |
-| T | Phylogenetic Tree |
+| Right click | Quick kill |
+| Tab | Species encyclopedia |
+| T | Phylogenetic tree |
 | K | Toggle species color mode |
 | I/G/O/D/S | Trigger disasters (Ice Age, Plague, Flood, Drought, Solar Flare) |
 | Scroll | Zoom |
-| Click + Drag | Pan camera |
+| Click + drag | Pan camera |
 
-## Tech Stack
+## Tech stack
 
-- **Server:** Rust (Cargo workspace) — deterministic simulation engine
-- **Client:** TypeScript + Vite + Canvas 2D — zero external dependencies
+- **Language:** TypeScript (Vite + Canvas 2D, zero runtime dependencies)
 - **Terrain:** From-scratch Perlin noise implementation with octave layering
 - **Ecosystem:** Agent-based simulation with energy conservation and Lotka-Volterra dynamics
 
-## Running Locally
+## Running locally
 
 ```bash
 cd client
@@ -74,7 +74,7 @@ npm run dev
 
 Open `http://localhost:5173` in your browser.
 
-## The Science
+## The science
 
 The simulation is grounded in real mathematical models:
 
